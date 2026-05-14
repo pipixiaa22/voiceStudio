@@ -45,10 +45,25 @@ export const useTextsStore = defineStore('texts', {
     },
     async exportSrt(id, params) {
       const response = await textsApi.exportSrt(id, params)
+
+      // Get filename from Content-Disposition header or use text title
+      let filename = 'output.srt'
+      const disposition = response.headers['content-disposition']
+      if (disposition) {
+        // Try to extract filename from Content-Disposition header
+        const filenameMatch = disposition.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i)
+        if (filenameMatch) {
+          filename = decodeURIComponent(filenameMatch[1])
+        }
+      }
+      if (filename === 'output.srt' && this.currentText?.title) {
+        filename = `${this.currentText.title}.srt`
+      }
+
       const url = window.URL.createObjectURL(new Blob([response.data]))
       const link = document.createElement('a')
       link.href = url
-      link.download = `${this.currentText?.title || 'output'}.srt`
+      link.download = filename
       link.click()
       window.URL.revokeObjectURL(url)
     },
