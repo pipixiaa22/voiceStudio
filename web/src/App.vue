@@ -1,34 +1,55 @@
 <template>
-  <div id="app">
-    <nav class="navbar">
-      <router-link to="/">文本列表</router-link>
-      <router-link to="/import">导入</router-link>
-    </nav>
-    <main>
+  <a-layout style="min-height: 100vh">
+    <a-layout-header class="header">
+      <div class="logo">字幕生成器</div>
+      <a-menu
+        theme="dark"
+        mode="horizontal"
+        :selectedKeys="selectedKeys"
+        @click="handleMenuClick"
+      >
+        <a-menu-item key="/">
+          <FileTextOutlined />
+          <span>文本列表</span>
+        </a-menu-item>
+        <a-menu-item key="/import">
+          <ImportOutlined />
+          <span>导入</span>
+        </a-menu-item>
+      </a-menu>
+    </a-layout-header>
+    <a-layout-content style="padding: 24px">
       <router-view />
-    </main>
-  </div>
+    </a-layout-content>
+  </a-layout>
 </template>
 
-<style>
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+<script setup>
+import { computed } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import { FileTextOutlined, ImportOutlined } from '@ant-design/icons-vue'
+
+const router = useRouter()
+const route = useRoute()
+
+const selectedKeys = computed(() => [route.path])
+
+const handleMenuClick = ({ key }) => {
+  router.push(key)
 }
-.navbar {
-  background: #2c3e50;
-  padding: 1rem;
+</script>
+
+<style scoped>
+.header {
   display: flex;
-  gap: 1rem;
+  align-items: center;
+  padding: 0 24px;
 }
-.navbar a {
+.logo {
   color: white;
-  text-decoration: none;
-}
-.navbar a.router-link-active {
-  color: #42b883;
-}
-main {
-  padding: 1rem;
+  font-size: 18px;
+  font-weight: bold;
+  margin-right: 24px;
+  white-space: nowrap;
 }
 </style>

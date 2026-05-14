@@ -1,28 +1,37 @@
 <template>
-  <div class="tag-selector">
-    <div class="selected-tags">
-      <span v-for="tag in selectedTags" :key="tag.id" class="tag">
+  <div>
+    <div style="margin-bottom: 8px">
+      <a-tag
+        v-for="tag in selectedTags"
+        :key="tag.id"
+        closable
+        color="success"
+        @close="removeTag(tag.id)"
+      >
         {{ tag.name }}
-        <button @click="removeTag(tag.id)" class="tag-remove">×</button>
-      </span>
+      </a-tag>
     </div>
-    <div class="tag-input">
-      <input
-        v-model="newTagName"
+
+    <a-input-group compact style="margin-bottom: 8px">
+      <a-input
+        v-model:value="newTagName"
         placeholder="输入标签名称"
         @keyup.enter="handleAddTag"
+        style="width: calc(100% - 64px)"
       />
-      <button @click="handleAddTag">添加</button>
-    </div>
-    <div class="available-tags">
-      <span
+      <a-button type="primary" @click="handleAddTag">添加</a-button>
+    </a-input-group>
+
+    <div v-if="availableTags.length > 0">
+      <span style="color: #999; font-size: 12px; margin-right: 8px">可用标签：</span>
+      <a-tag
         v-for="tag in availableTags"
         :key="tag.id"
-        class="tag tag-available"
+        style="cursor: pointer"
         @click="addTag(tag)"
       >
         {{ tag.name }}
-      </span>
+      </a-tag>
     </div>
   </div>
 </template>
@@ -62,55 +71,3 @@ const handleAddTag = async () => {
   newTagName.value = ''
 }
 </script>
-
-<style scoped>
-.tag-selector {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-.selected-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-.tag {
-  display: inline-flex;
-  align-items: center;
-  background: #e8f5e9;
-  color: #2e7d32;
-  padding: 0.25rem 0.5rem;
-  border-radius: 12px;
-  font-size: 0.875rem;
-}
-.tag-remove {
-  background: none;
-  border: none;
-  margin-left: 0.25rem;
-  cursor: pointer;
-  color: #2e7d32;
-}
-.tag-input {
-  display: flex;
-  gap: 0.5rem;
-}
-.tag-input input {
-  flex: 1;
-  padding: 0.25rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-}
-.available-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-.tag-available {
-  background: #f5f5f5;
-  color: #666;
-  cursor: pointer;
-}
-.tag-available:hover {
-  background: #e0e0e0;
-}
-</style>

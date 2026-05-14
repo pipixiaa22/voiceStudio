@@ -1,40 +1,50 @@
 <template>
-  <div class="folder-tree">
-    <div class="folder-header">
-      <h3>文件夹</h3>
-      <button @click="showAddFolder = true" class="btn-add">+</button>
+  <div>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px">
+      <h3 style="margin: 0">文件夹</h3>
+      <a-button type="primary" size="small" @click="showAddFolder = true">
+        <template #icon><PlusOutlined /></template>
+      </a-button>
     </div>
 
-    <div v-if="showAddFolder" class="add-folder">
-      <input v-model="newFolderName" placeholder="文件夹名称" @keyup.enter="handleAdd" />
-      <button @click="handleAdd">添加</button>
-      <button @click="showAddFolder = false">取消</button>
-    </div>
+    <a-input-group v-if="showAddFolder" compact style="margin-bottom: 16px">
+      <a-input
+        v-model:value="newFolderName"
+        placeholder="文件夹名称"
+        @keyup.enter="handleAdd"
+        style="width: calc(100% - 64px)"
+      />
+      <a-button type="primary" @click="handleAdd">添加</a-button>
+      <a-button @click="showAddFolder = false">取消</a-button>
+    </a-input-group>
 
-    <div class="folder-list">
-      <div
-        v-for="folder in folders"
-        :key="folder.id"
-        class="folder-item"
-        :class="{ active: selectedFolderId === folder.id }"
-        @click="$emit('select', folder.id)"
-      >
-        <span>{{ folder.name }}</span>
-        <button @click.stop="handleDelete(folder.id)" class="btn-delete">×</button>
-      </div>
-      <div
-        class="folder-item"
-        :class="{ active: selectedFolderId === null }"
-        @click="$emit('select', null)"
-      >
+    <a-menu
+      mode="inline"
+      :selectedKeys="selectedKeys"
+      @click="handleMenuClick"
+    >
+      <a-menu-item key="all">
+        <FolderOutlined />
         <span>全部文本</span>
-      </div>
-    </div>
+      </a-menu-item>
+      <a-menu-item v-for="folder in folders" :key="folder.id">
+        <FolderOutlined />
+        <span>{{ folder.name }}</span>
+        <a-popconfirm
+          title="确定删除此文件夹？"
+          @confirm="handleDelete(folder.id)"
+          @click.stop
+        >
+          <DeleteOutlined style="float: right; margin-top: 4px; color: #999" @click.stop />
+        </a-popconfirm>
+      </a-menu-item>
+    </a-menu>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { PlusOutlined, FolderOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import { useFoldersStore } from '../stores/folders'
 
 const props = defineProps({
@@ -48,7 +58,15 @@ const newFolderName = ref('')
 
 onMounted(() => foldersStore.fetchFolders())
 
-const folders = foldersStore.folders
+const folders = computed(() => foldersStore.folders)
+
+const selectedKeys = computed(() => {
+  return props.selectedFolderId ? [String(props.selectedFolderId)] : ['all']
+})
+
+const handleMenuClick = ({ key }) => {
+  emit('select', key === 'all' ? null : parseInt(key))
+}
 
 const handleAdd = async () => {
   if (!newFolderName.value.trim()) return
@@ -58,62 +76,9 @@ const handleAdd = async () => {
 }
 
 const handleDelete = async (id) => {
-  if (confirm('确定删除此文件夹？')) {
-    await foldersStore.deleteFolder(id)
-    if (props.selectedFolderId === id) {
-      emit('select', null)
-    }
+  await foldersStore.deleteFolder(id)
+  if (props.selectedFolderId === id) {
+    emit('select', null)
   }
 }
 </script>
-
-<style scoped>
-.folder-tree {
-  width: 200px;
-  border-right: 1px solid #eee;
-  padding: 1rem;
-}
-.folder-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.btn-add {
-  background: #42b883;
-  color: white;
-  border: none;
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-.folder-item {
-  padding: 0.5rem;
-  cursor: pointer;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.folder-item:hover {
-  background: #f5f5f5;
-}
-.folder-item.active {
-  background: #e8f5e9;
-}
-.btn-delete {
-  background: none;
-  border: none;
-  color: #999;
-  cursor: pointer;
-  font-size: 1.2rem;
-}
-.add-folder {
-  margin: 0.5rem 0;
-  display: flex;
-  gap: 0.5rem;
-}
-.add-folder input {
-  flex: 1;
-  padding: 0.25rem;
-}
-</style>

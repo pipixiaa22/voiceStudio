@@ -1,59 +1,83 @@
 <template>
-  <div class="text-list-page">
-    <FolderTree
-      :selectedFolderId="selectedFolderId"
-      @select="selectedFolderId = $event"
-    />
-
-    <div class="text-list-content">
-      <div class="toolbar">
-        <input v-model="searchQuery" placeholder="搜索文本..." class="search-input" />
-        <select v-model="sortBy" class="sort-select">
-          <option value="created_at">创建时间</option>
-          <option value="updated_at">更新时间</option>
-        </select>
-        <select v-model="sortOrder" class="sort-select">
-          <option value="desc">降序</option>
-          <option value="asc">升序</option>
-        </select>
-        <router-link to="/edit" class="btn btn-primary">新建文本</router-link>
+  <a-layout>
+    <a-layout-sider width="220" style="background: #fff; padding: 16px">
+      <FolderTree
+        :selectedFolderId="selectedFolderId"
+        @select="selectedFolderId = $event"
+      />
+    </a-layout-sider>
+    <a-layout-content style="padding: 0 24px">
+      <div style="margin-bottom: 16px; display: flex; gap: 16px; align-items: center">
+        <a-input-search
+          v-model:value="searchQuery"
+          placeholder="搜索文本..."
+          style="flex: 1"
+        />
+        <a-select v-model:value="sortBy" style="width: 120px">
+          <a-select-option value="created_at">创建时间</a-select-option>
+          <a-select-option value="updated_at">更新时间</a-select-option>
+        </a-select>
+        <a-select v-model:value="sortOrder" style="width: 100px">
+          <a-select-option value="desc">降序</a-select-option>
+          <a-select-option value="asc">升序</a-select-option>
+        </a-select>
+        <router-link to="/edit">
+          <a-button type="primary">
+            <template #icon><PlusOutlined /></template>
+            新建文本
+          </a-button>
+        </router-link>
       </div>
 
-      <div v-if="loading" class="loading">加载中...</div>
-
-      <table v-else class="text-table">
-        <thead>
-          <tr>
-            <th>标题</th>
-            <th>标签</th>
-            <th>创建时间</th>
-            <th>更新时间</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="text in filteredTexts" :key="text.id">
-            <td>
-              <router-link :to="`/edit/${text.id}`">{{ text.title }}</router-link>
-            </td>
-            <td>
-              <span v-for="tag in text.tags" :key="tag.id" class="tag">{{ tag.name }}</span>
-            </td>
-            <td>{{ formatDate(text.created_at) }}</td>
-            <td>{{ formatDate(text.updated_at) }}</td>
-            <td>
-              <button @click="handleExport(text.id)" class="btn btn-sm">导出SRT</button>
-              <button @click="handleDelete(text.id)" class="btn btn-sm btn-danger">删除</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
+      <a-spin :spinning="loading">
+        <a-table
+          :dataSource="filteredTexts"
+          :columns="columns"
+          rowKey="id"
+          :pagination="{ pageSize: 20 }"
+        >
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.key === 'title'">
+              <router-link :to="`/edit/${record.id}`">{{ record.title }}</router-link>
+            </template>
+            <template v-else-if="column.key === 'tags'">
+              <a-tag v-for="tag in record.tags" :key="tag.id" color="success">
+                {{ tag.name }}
+              </a-tag>
+            </template>
+            <template v-else-if="column.key === 'created_at'">
+              {{ formatDate(record.created_at) }}
+            </template>
+            <template v-else-if="column.key === 'updated_at'">
+              {{ formatDate(record.updated_at) }}
+            </template>
+            <template v-else-if="column.key === 'action'">
+              <a-space>
+                <a-button size="small" @click="handleExport(record.id)">
+                  <template #icon><DownloadOutlined /></template>
+                  导出SRT
+                </a-button>
+                <a-popconfirm
+                  title="确定删除此文本？"
+                  @confirm="handleDelete(record.id)"
+                >
+                  <a-button size="small" danger>
+                    <template #icon><DeleteOutlined /></template>
+                    删除
+                  </a-button>
+                </a-popconfirm>
+              </a-space>
+            </template>
+          </template>
+        </a-table>
+      </a-spin>
+    </a-layout-content>
+  </a-layout>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
+import { PlusOutlined, DownloadOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import { useTextsStore } from '../stores/texts'
 import FolderTree from '../components/FolderTree.vue'
 
@@ -64,6 +88,14 @@ const sortBy = ref('created_at')
 const sortOrder = ref('desc')
 
 const loading = computed(() => textsStore.loading)
+
+const columns = [
+  { title: '标题', key: 'title', dataIndex: 'title' },
+  { title: '标签', key: 'tags' },
+  { title: '创建时间', key: 'created_at' },
+  { title: '更新时间', key: 'updated_at' },
+  { title: '操作', key: 'action', width: 200 },
+]
 
 const fetchTexts = () => {
   textsStore.fetchTexts({
@@ -94,82 +126,6 @@ const handleExport = async (id) => {
 }
 
 const handleDelete = async (id) => {
-  if (confirm('确定删除此文本？')) {
-    await textsStore.deleteText(id)
-  }
+  await textsStore.deleteText(id)
 }
 </script>
-
-<style scoped>
-.text-list-page {
-  display: flex;
-  min-height: calc(100vh - 60px);
-}
-.text-list-content {
-  flex: 1;
-  padding: 1rem;
-}
-.toolbar {
-  display: flex;
-  gap: 1rem;
-  margin-bottom: 1rem;
-  align-items: center;
-}
-.search-input {
-  flex: 1;
-  padding: 0.5rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-}
-.sort-select {
-  padding: 0.5rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-}
-.btn {
-  padding: 0.5rem 1rem;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  text-decoration: none;
-}
-.btn-primary {
-  background: #42b883;
-  color: white;
-}
-.btn-sm {
-  padding: 0.25rem 0.5rem;
-  font-size: 0.875rem;
-}
-.btn-danger {
-  background: #e74c3c;
-  color: white;
-}
-.text-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-.text-table th,
-.text-table td {
-  padding: 0.75rem;
-  border-bottom: 1px solid #eee;
-  text-align: left;
-}
-.text-table th {
-  background: #f5f5f5;
-}
-.tag {
-  display: inline-block;
-  background: #e8f5e9;
-  color: #2e7d32;
-  padding: 0.125rem 0.5rem;
-  border-radius: 12px;
-  font-size: 0.75rem;
-  margin-right: 0.25rem;
-}
-.loading {
-  text-align: center;
-  padding: 2rem;
-  color: #999;
-}
-</style>
