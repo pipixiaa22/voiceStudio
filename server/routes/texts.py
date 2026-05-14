@@ -33,6 +33,12 @@ def get_texts():
     return jsonify([t.to_dict() for t in texts])
 
 
+@texts_bp.route('/api/texts/<int:text_id>', methods=['GET'])
+def get_text(text_id):
+    text = Text.query.get_or_404(text_id)
+    return jsonify(text.to_dict())
+
+
 @texts_bp.route('/api/texts', methods=['POST'])
 def create_text():
     data = request.get_json()

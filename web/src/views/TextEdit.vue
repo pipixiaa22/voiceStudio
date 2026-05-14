@@ -56,7 +56,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { SaveOutlined, DownloadOutlined } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
@@ -69,7 +69,7 @@ const route = useRoute()
 const textsStore = useTextsStore()
 const foldersStore = useFoldersStore()
 
-const textId = route.params.id ? parseInt(route.params.id) : null
+const textId = ref(route.params.id ? parseInt(route.params.id) : null)
 const title = ref('未命名')
 const content = ref('')
 const folderId = ref(null)
@@ -78,16 +78,40 @@ const saving = ref(false)
 
 const folders = computed(() => foldersStore.folders)
 
-onMounted(async () => {
-  foldersStore.fetchFolders()
-  if (textId) {
-    const text = await textsStore.fetchText(textId)
+const loadText = async (id) => {
+  if (!id) {
+    title.value = '未命名'
+    content.value = ''
+    folderId.value = null
+    selectedTags.value = []
+    return
+  }
+  try {
+    const text = await textsStore.fetchText(id)
     title.value = text.title
     content.value = text.content
     folderId.value = text.folder_id
     selectedTags.value = text.tags || []
+  } catch (e) {
+    message.error('加载文本失败')
+    console.error('Failed to load text:', e)
   }
+}
+
+onMounted(async () => {
+  await foldersStore.fetchFolders()
+  await loadText(textId.value)
 })
+
+// Watch for route changes (when navigating between different edit pages)
+watch(
+  () => route.params.id,
+  async (newId) => {
+    const id = newId ? parseInt(newId) : null
+    textId.value = id
+    await loadText(id)
+  }
+)
 
 const handleSave = async () => {
   saving.value = true
@@ -98,23 +122,25 @@ const handleSave = async () => {
       folder_id: folderId.value,
       tag_ids: selectedTags.value.map(t => t.id),
     }
-    if (textId) {
-      await textsStore.updateText(textId, data)
+    if (textId.value) {
+      await textsStore.updateText(textId.value, data)
       message.success('保存成功')
     } else {
-      const newText = await textsStore.createText(data)
+      await textsStore.createText(data)
       message.success('创建成功')
-      router.replace(`/edit/${newText.id}`)
     }
+    // Navigate back to list page after save
+    router.push('/')
   } catch (e) {
     message.error('保存失败')
+    console.error('Failed to save:', e)
   } finally {
     saving.value = false
   }
 }
 
 const handleExport = async () => {
-  await textsStore.exportSrt(textId, { speed: 5, max_chars: 20 })
+  await textsStore.exportSrt(textId.value, { speed: 5, max_chars: 20 })
   message.success('导出成功')
 }
 </script>
