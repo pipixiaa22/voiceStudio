@@ -21,6 +21,14 @@ export const useFoldersStore = defineStore('folders', {
       this.folders.push(data)
       return data
     },
+    async updateFolder(id, folderData) {
+      const { data } = await foldersApi.update(id, folderData)
+      const index = this.folders.findIndex(f => f.id === id)
+      if (index !== -1) {
+        this.folders[index] = data
+      }
+      return data
+    },
     async deleteFolder(id) {
       await foldersApi.delete(id)
       this.folders = this.folders.filter(f => f.id !== id)

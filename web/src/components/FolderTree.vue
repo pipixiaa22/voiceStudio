@@ -7,14 +7,27 @@
         </svg>
         <span>文件夹</span>
       </h3>
-      <a-button type="text" size="small" @click="handleAddRoot" class="add-btn">
-        <template #icon>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="12" y1="5" x2="12" y2="19"/>
-            <line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
+      <a-dropdown :trigger="['click']">
+        <a-button type="text" size="small" class="add-btn">
+          <template #icon>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+          </template>
+        </a-button>
+        <template #overlay>
+          <a-menu @click="handleRootMenuClick">
+            <a-menu-item key="add-root">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              创建文件夹
+            </a-menu-item>
+          </a-menu>
         </template>
-      </a-button>
+      </a-dropdown>
     </div>
 
     <!-- Add Folder Input -->
@@ -34,10 +47,14 @@
 
     <!-- Folder List -->
     <div class="folder-list">
+      <!-- All Texts -->
       <div
         class="folder-item"
-        :class="{ active: selectedFolderId === null }"
+        :class="{ active: selectedFolderId === null, 'drag-over': dragOverFolderId === 'all' }"
         @click="$emit('select', null)"
+        @dragover.prevent="handleDragOver('all')"
+        @dragleave="handleDragLeave"
+        @drop.prevent="handleDrop(null, $event)"
       >
         <div class="folder-item-content">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="folder-icon">
@@ -51,12 +68,23 @@
         <span class="folder-count">{{ totalCount }}</span>
       </div>
 
+      <!-- Folder Items -->
       <div
         v-for="folder in folders"
         :key="folder.id"
         class="folder-item"
-        :class="{ active: selectedFolderId === folder.id }"
+        :class="{
+          active: selectedFolderId === folder.id,
+          'drag-over': dragOverFolderId === folder.id,
+          'dragging': draggingFolderId === folder.id
+        }"
         @click="$emit('select', folder.id)"
+        @dragover.prevent="handleDragOver(folder.id)"
+        @dragleave="handleDragLeave"
+        @drop.prevent="handleDrop(folder.id, $event)"
+        draggable="true"
+        @dragstart="handleDragStart(folder.id, $event)"
+        @dragend="handleDragEnd"
       >
         <div class="folder-item-content">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="folder-icon">
@@ -76,11 +104,19 @@
             <a-menu @click="({ key }) => handleFolderAction(key, folder)">
               <a-menu-item key="add-child">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px">
-                  <line x1="12" y1="5" x2="12" y2="19"/>
-                  <line x1="5" y1="12" x2="19" y2="12"/>
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                  <line x1="12" y1="11" x2="12" y2="17"/>
+                  <line x1="9" y1="14" x2="15" y2="14"/>
                 </svg>
-                新增子文件夹
+                创建子文件夹
               </a-menu-item>
+              <a-menu-item key="rename">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px">
+                  <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+                </svg>
+                重命名
+              </a-menu-item>
+              <a-menu-divider />
               <a-menu-item key="delete" danger>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px">
                   <polyline points="3 6 5 6 21 6"/>
@@ -93,6 +129,23 @@
         </a-dropdown>
       </div>
     </div>
+
+    <!-- Rename Modal -->
+    <a-modal
+      v-model:open="showRenameModal"
+      title="重命名文件夹"
+      @ok="handleRename"
+      @cancel="showRenameModal = false"
+      okText="确定"
+      cancelText="取消"
+    >
+      <a-input
+        v-model:value="renameFolderName"
+        placeholder="输入新名称"
+        @keyup.enter="handleRename"
+        autofocus
+      />
+    </a-modal>
   </div>
 </template>
 
@@ -106,29 +159,62 @@ const props = defineProps({
   selectedFolderId: { type: Number, default: null }
 })
 
-const emit = defineEmits(['select'])
+const emit = defineEmits(['select', 'moveText'])
 const foldersStore = useFoldersStore()
 const textsStore = useTextsStore()
+
 const showAddFolder = ref(false)
 const newFolderName = ref('')
 const addingParentId = ref(null)
 
+// Drag and drop state
+const dragOverFolderId = ref(null)
+const draggingFolderId = ref(null)
+const dragCounter = ref(0)
+
+// Rename state
+const showRenameModal = ref(false)
+const renameFolderId = ref(null)
+const renameFolderName = ref('')
+
 onMounted(() => foldersStore.fetchFolders())
 
 const folders = computed(() => foldersStore.folders)
-
 const totalCount = computed(() => textsStore.texts.length)
 
-const handleAddRoot = () => {
-  addingParentId.value = null
-  showAddFolder.value = true
+// Menu handlers
+const handleRootMenuClick = ({ key }) => {
+  if (key === 'add-root') {
+    addingParentId.value = null
+    showAddFolder.value = true
+  }
 }
 
-const handleAddChild = (folder) => {
-  addingParentId.value = folder.id
-  showAddFolder.value = true
+const handleFolderAction = (key, folder) => {
+  switch (key) {
+    case 'add-child':
+      addingParentId.value = folder.id
+      showAddFolder.value = true
+      break
+    case 'rename':
+      renameFolderId.value = folder.id
+      renameFolderName.value = folder.name
+      showRenameModal.value = true
+      break
+    case 'delete':
+      Modal.confirm({
+        title: '确定删除此文件夹？',
+        content: '文件夹内的文本不会被删除，但会移到"全部文本"。',
+        okText: '删除',
+        cancelText: '取消',
+        okButtonProps: { danger: true },
+        onOk: () => handleDelete(folder.id)
+      })
+      break
+  }
 }
 
+// Add folder
 const cancelAdd = () => {
   showAddFolder.value = false
   newFolderName.value = ''
@@ -147,6 +233,7 @@ const handleAdd = async () => {
   message.success('文件夹已创建')
 }
 
+// Delete folder
 const handleDelete = async (id) => {
   await foldersStore.deleteFolder(id)
   if (props.selectedFolderId === id) {
@@ -155,18 +242,54 @@ const handleDelete = async (id) => {
   message.success('文件夹已删除')
 }
 
-const handleFolderAction = (key, folder) => {
-  if (key === 'add-child') {
-    handleAddChild(folder)
-  } else if (key === 'delete') {
-    Modal.confirm({
-      title: '确定删除此文件夹？',
-      content: '文件夹内的文本不会被删除，但删除后不可恢复。',
-      okText: '删除',
-      cancelText: '取消',
-      okButtonProps: { danger: true },
-      onOk: () => handleDelete(folder.id)
-    })
+// Rename folder
+const handleRename = async () => {
+  if (!renameFolderName.value.trim()) return
+  // Note: You'll need to add this API endpoint
+  try {
+    await foldersStore.updateFolder(renameFolderId.value, { name: renameFolderName.value })
+    showRenameModal.value = false
+    message.success('文件夹已重命名')
+  } catch (e) {
+    message.error('重命名失败')
+  }
+}
+
+// Drag and drop handlers
+const handleDragStart = (folderId, event) => {
+  draggingFolderId.value = folderId
+  event.dataTransfer.setData('folderId', folderId)
+  event.dataTransfer.effectAllowed = 'move'
+}
+
+const handleDragEnd = () => {
+  draggingFolderId.value = null
+  dragOverFolderId.value = null
+  dragCounter.value = 0
+}
+
+const handleDragOver = (folderId) => {
+  dragOverFolderId.value = folderId
+  dragCounter.value++
+}
+
+const handleDragLeave = () => {
+  dragCounter.value--
+  if (dragCounter.value === 0) {
+    dragOverFolderId.value = null
+  }
+}
+
+const handleDrop = async (folderId, event) => {
+  dragOverFolderId.value = null
+  dragCounter.value = 0
+
+  const textId = event.dataTransfer.getData('textId')
+  if (textId) {
+    // Move text to folder
+    await textsStore.updateText(parseInt(textId), { folder_id: folderId })
+    message.success(folderId ? '已移入文件夹' : '已移出文件夹')
+    emit('moveText')
   }
 }
 </script>
@@ -272,6 +395,7 @@ const handleFolderAction = (key, folder) => {
   cursor: pointer;
   transition: all var(--transition-fast);
   position: relative;
+  border: 1px solid transparent;
 }
 
 .folder-item:hover {
@@ -287,6 +411,17 @@ const handleFolderAction = (key, folder) => {
 .folder-item.active .folder-name {
   color: var(--gold);
   font-weight: 500;
+}
+
+/* Drag and Drop States */
+.folder-item.drag-over {
+  background: var(--gold-glow) !important;
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 20px var(--gold-glow);
+}
+
+.folder-item.dragging {
+  opacity: 0.5;
 }
 
 .folder-item-content {

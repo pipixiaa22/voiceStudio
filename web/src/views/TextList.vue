@@ -5,6 +5,7 @@
         <FolderTree
           :selectedFolderId="selectedFolderId"
           @select="selectedFolderId = $event"
+          @moveText="fetchTexts"
         />
       </a-layout-sider>
       <a-layout-content class="main-content">
@@ -55,6 +56,11 @@
             rowKey="id"
             :pagination="{ pageSize: 20, hideOnSinglePage: true }"
             class="text-table"
+            :customRow="(record) => ({
+              draggable: true,
+              onDragstart: (e) => handleTextDragStart(record.id, e),
+              onDragend: handleTextDragEnd,
+            })"
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'title'">
@@ -213,6 +219,19 @@ const handleDelete = async (id) => {
   await textsStore.deleteText(id)
   message.success('已删除')
 }
+
+// Drag and drop handlers for text rows
+const handleTextDragStart = (textId, event) => {
+  event.dataTransfer.setData('textId', textId)
+  event.dataTransfer.effectAllowed = 'move'
+  // Add visual feedback
+  event.target.closest('tr').classList.add('dragging')
+}
+
+const handleTextDragEnd = (event) => {
+  // Remove visual feedback
+  event.target.closest('tr')?.classList.remove('dragging')
+}
 </script>
 
 <style scoped>
@@ -345,6 +364,22 @@ const handleDelete = async (id) => {
 .action-btn svg {
   width: 15px;
   height: 15px;
+}
+
+/* Dragging State */
+.text-table :deep(.ant-table-row) {
+  cursor: grab;
+  transition: all var(--transition-fast);
+}
+
+.text-table :deep(.ant-table-row:hover) {
+  background: var(--surface-hover);
+}
+
+.text-table :deep(.ant-table-row.dragging) {
+  opacity: 0.5;
+  cursor: grabbing;
+  background: var(--gold-glow);
 }
 
 /* Responsive */

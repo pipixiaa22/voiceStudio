@@ -19,6 +19,7 @@ export const textsApi = {
 export const foldersApi = {
   list: () => api.get('/folders'),
   create: (data) => api.post('/folders', data),
+  update: (id, data) => api.put(`/folders/${id}`, data),
   delete: (id) => api.delete(`/folders/${id}`),
 }
 

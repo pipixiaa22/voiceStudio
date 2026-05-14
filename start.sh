@@ -24,7 +24,7 @@ start() {
     sleep 2
     echo ""
     echo "Servers started:"
-    echo "  Flask backend:  http://localhost:5001"
+    echo "  Flask backend:  http://localhost:5002"
     echo "  Vue frontend:   http://localhost:3000"
     echo ""
     echo "Logs:"

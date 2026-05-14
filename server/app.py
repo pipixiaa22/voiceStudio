@@ -35,7 +35,7 @@ def create_app(test_config=None):
 
 def main():
     app = create_app()
-    app.run(debug=False, port=5001)
+    app.run(debug=False, port=5002)
 
 
 if __name__ == '__main__':

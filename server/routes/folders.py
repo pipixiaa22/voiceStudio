@@ -22,6 +22,20 @@ def create_folder():
     return jsonify(folder.to_dict()), 201
 
 
+@folders_bp.route('/api/folders/<int:folder_id>', methods=['PUT'])
+def update_folder(folder_id):
+    folder = Folder.query.get_or_404(folder_id)
+    data = request.get_json()
+
+    if 'name' in data:
+        folder.name = data['name']
+    if 'parent_id' in data:
+        folder.parent_id = data['parent_id']
+
+    db.session.commit()
+    return jsonify(folder.to_dict())
+
+
 @folders_bp.route('/api/folders/<int:folder_id>', methods=['DELETE'])
 def delete_folder(folder_id):
     folder = Folder.query.get_or_404(folder_id)
