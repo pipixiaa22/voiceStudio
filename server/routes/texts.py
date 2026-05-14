@@ -1,5 +1,13 @@
+import sys
+import os
+
 from flask import Blueprint, request, jsonify
 from server.models import db, Text, Tag
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
+from splitter import split_text
+from srt import generate_srt
 
 texts_bp = Blueprint('texts', __name__)
 
@@ -72,3 +80,37 @@ def delete_text(text_id):
     db.session.delete(text)
     db.session.commit()
     return '', 204
+
+
+@texts_bp.route('/api/texts/import', methods=['POST'])
+def import_text():
+    if 'file' not in request.files:
+        return jsonify({'error': '没有上传文件'}), 400
+
+    file = request.files['file']
+    if not file.filename.endswith('.txt'):
+        return jsonify({'error': '只支持 .txt 文件'}), 400
+
+    content = file.read().decode('utf-8')
+    title = file.filename.replace('.txt', '')
+
+    text = Text(title=title, content=content)
+    db.session.add(text)
+    db.session.commit()
+    return jsonify(text.to_dict()), 201
+
+
+@texts_bp.route('/api/texts/<int:text_id>/srt', methods=['GET'])
+def export_srt(text_id):
+    text = Text.query.get_or_404(text_id)
+
+    speed = float(request.args.get('speed', 5))
+    max_chars = int(request.args.get('max_chars', 20))
+
+    segments = split_text(text.content, max_chars=max_chars)
+    srt_content = generate_srt(segments, chars_per_second=speed)
+
+    return srt_content, 200, {
+        'Content-Type': 'text/srt',
+        'Content-Disposition': f'attachment; filename="{text.title}.srt"'
+    }

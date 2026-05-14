@@ -1,3 +1,6 @@
+import io
+
+
 def test_create_text(client):
     response = client.post('/api/texts', json={
         'title': '测试标题',
@@ -56,3 +59,20 @@ def test_sort_texts(client):
     response = client.get('/api/texts?sort_by=created_at&order=desc')
     data = response.get_json()
     assert data[0]['title'] == '第二个'
+
+
+def test_import_txt(client):
+    data = {
+        'file': (io.BytesIO('测试内容'.encode('utf-8')), 'test.txt'),
+    }
+    response = client.post('/api/texts/import', data=data, content_type='multipart/form-data')
+    assert response.status_code == 201
+    result = response.get_json()
+    assert result['content'] == '测试内容'
+
+
+def test_export_srt(client):
+    text = client.post('/api/texts', json={'title': '测试', 'content': '你好吗？我很好。'}).get_json()
+    response = client.get(f"/api/texts/{text['id']}/srt?speed=5&max_chars=20")
+    assert response.status_code == 200
+    assert '00:00:00' in response.text
