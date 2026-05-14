@@ -32,7 +32,12 @@ def split_text(text: str, max_chars: int = 20) -> list[str]:
         else:
             result.extend(_split_by_comma(sentence, max_chars))
 
-    return result
+    return [_strip_trailing_punct(s) for s in result]
+
+
+def _strip_trailing_punct(text: str) -> str:
+    """Remove trailing 。and，but preserve？and！"""
+    return re.sub(r'[。，]+$', '', text)
 
 
 def _split_by_comma(text: str, max_chars: int) -> list[str]:
