@@ -116,7 +116,11 @@ def export_srt(text_id):
     segments = split_text(text.content, max_chars=max_chars)
     srt_content = generate_srt(segments, chars_per_second=speed)
 
+    # URL-encode the filename to handle non-ASCII characters
+    from urllib.parse import quote
+    encoded_filename = quote(f'{text.title}.srt')
+
     return srt_content, 200, {
-        'Content-Type': 'text/srt',
-        'Content-Disposition': f'attachment; filename="{text.title}.srt"'
+        'Content-Type': 'text/srt; charset=utf-8',
+        'Content-Disposition': f"attachment; filename*=UTF-8''{encoded_filename}"
     }
