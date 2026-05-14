@@ -1,9 +1,10 @@
 def _format_timestamp(seconds: float) -> str:
     """将秒数格式化为 SRT 时间戳。"""
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
-    millis = int((seconds % 1) * 1000)
+    total_millis = round(seconds * 1000)
+    hours = total_millis // 3600000
+    minutes = (total_millis % 3600000) // 60000
+    secs = (total_millis % 60000) // 1000
+    millis = total_millis % 1000
     return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
 
 
@@ -22,9 +23,8 @@ def generate_srt(segments: list[str], chars_per_second: float = 5) -> str:
 
         lines.append(str(i))
         lines.append(f"{start} --> {end}")
-        lines.append(segment)
-        if i < len(segments):
-            lines.append("")
+        lines.append(segment.replace("\n", " "))
+        lines.append("")
 
         current_time += duration
 
