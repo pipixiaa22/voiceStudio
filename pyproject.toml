@@ -10,10 +10,14 @@ dependencies = [
     "flask-cors>=4.0.0",
 ]
 
+[project.scripts]
+subtitle-web = "server.app:main"
+
 [dependency-groups]
 dev = [
     "pytest>=9.0.3",
 ]
 
 [tool.pytest.ini_options]
-pythonpath = ["."]
+pythonpath = [".", "server"]
+testpaths = ["tests", "server/tests"]
