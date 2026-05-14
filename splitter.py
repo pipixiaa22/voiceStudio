@@ -25,8 +25,7 @@ def split_text(text: str, max_chars: int = 20) -> list[str]:
     # 对每个句子检查长度，必要时按逗号拆分
     result = []
     for sentence in merged:
-        sentence = sentence.strip()
-        if not sentence:
+        if not sentence.strip():
             continue
         if len(sentence) <= max_chars:
             result.append(sentence)

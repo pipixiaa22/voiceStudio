@@ -36,6 +36,7 @@ def test_content_preservation():
         "这是一个很长的句子，包含了很多内容，需要在逗号处拆分。",
         "没有标点符号的纯文本",
         "混合：逗号、分号；还有句号。",
+        "你好吗？ 我很好。今天天气不错！",
     ]
     for text in texts:
         result = split_text(text)
