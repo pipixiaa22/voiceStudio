@@ -2,6 +2,16 @@
 import re
 
 
+def _merge_with_delimiters(parts: list[str]) -> list[str]:
+    """Merge re.split results so each delimiter is attached to the preceding segment."""
+    merged = []
+    for i in range(0, len(parts) - 1, 2):
+        merged.append(parts[i] + (parts[i + 1] if i + 1 < len(parts) else ""))
+    if len(parts) % 2 == 1 and parts[-1]:
+        merged.append(parts[-1])
+    return merged
+
+
 def split_text(text: str, max_chars: int = 20) -> list[str]:
     """将文字按标点智能分段。"""
     text = text.strip()
@@ -10,12 +20,7 @@ def split_text(text: str, max_chars: int = 20) -> list[str]:
 
     # 按句末标点拆分
     sentences = re.split(r'([。？！…]+)', text)
-    # 合并标点到前一个片段
-    merged = []
-    for i in range(0, len(sentences) - 1, 2):
-        merged.append(sentences[i] + (sentences[i + 1] if i + 1 < len(sentences) else ""))
-    if len(sentences) % 2 == 1 and sentences[-1]:
-        merged.append(sentences[-1])
+    merged = _merge_with_delimiters(sentences)
 
     # 对每个句子检查长度，必要时按逗号拆分
     result = []
@@ -34,17 +39,13 @@ def split_text(text: str, max_chars: int = 20) -> list[str]:
 def _split_by_comma(text: str, max_chars: int) -> list[str]:
     """在逗号类标点处拆分长句。"""
     parts = re.split(r'([，、；：,;:]+)', text)
-    merged = []
-    for i in range(0, len(parts) - 1, 2):
-        merged.append(parts[i] + (parts[i + 1] if i + 1 < len(parts) else ""))
-    if len(parts) % 2 == 1 and parts[-1]:
-        merged.append(parts[-1])
+    merged = _merge_with_delimiters(parts)
 
     result = []
     current = ""
     for part in merged:
-        part = part.strip()
-        if not part:
+        # Skip whitespace-only parts; do not strip meaningful whitespace
+        if not part.strip():
             continue
         if len(current) + len(part) <= max_chars:
             current += part
