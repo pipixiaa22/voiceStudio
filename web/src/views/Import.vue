@@ -228,6 +228,7 @@ const handleImport = async () => {
 
 .import-card {
   min-height: calc(100vh - 130px);
+  box-shadow: var(--shadow-sm) !important;
 }
 
 .card-header {
@@ -237,21 +238,21 @@ const handleImport = async () => {
 
 .page-title {
   font-family: var(--font-display);
-  font-size: 32px;
-  font-weight: 700;
+  font-size: 28px;
+  font-weight: 650;
   color: var(--text-primary);
   margin: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: var(--space-md);
-  letter-spacing: 2px;
+  letter-spacing: 0;
 }
 
 .title-icon {
-  width: 36px;
-  height: 36px;
-  color: var(--gold);
+  width: 30px;
+  height: 30px;
+  color: var(--text-primary);
 }
 
 .page-desc {
@@ -262,24 +263,24 @@ const handleImport = async () => {
 
 /* Upload Area */
 .upload-area {
-  border: 2px dashed var(--ink-subtle);
+  border: 1.5px dashed var(--surface-border-strong);
   border-radius: var(--radius-lg);
   padding: var(--space-2xl) var(--space-xl);
   text-align: center;
   cursor: pointer;
   transition: all var(--transition-normal);
-  background: var(--ink-medium);
+  background: var(--paper-soft);
   margin-top: var(--space-lg);
 }
 
 .upload-area:hover {
-  border-color: var(--gold);
+  border-color: var(--text-primary);
   background: var(--surface-hover);
 }
 
 .upload-area.has-file {
   border-style: solid;
-  border-color: var(--gold);
+  border-color: var(--text-primary);
   cursor: default;
 }
 
@@ -291,10 +292,10 @@ const handleImport = async () => {
 }
 
 .upload-icon-wrapper {
-  width: 80px;
-  height: 80px;
+  width: 72px;
+  height: 72px;
   border-radius: 50%;
-  background: var(--gold-glow);
+  background: var(--surface-active);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -302,9 +303,9 @@ const handleImport = async () => {
 }
 
 .upload-icon {
-  width: 40px;
-  height: 40px;
-  color: var(--gold);
+  width: 34px;
+  height: 34px;
+  color: var(--text-primary);
 }
 
 .upload-text {
@@ -313,7 +314,7 @@ const handleImport = async () => {
 }
 
 .upload-link {
-  color: var(--gold);
+  color: var(--text-primary);
   text-decoration: underline;
   text-underline-offset: 4px;
 }
@@ -334,7 +335,7 @@ const handleImport = async () => {
 .file-icon {
   width: 40px;
   height: 40px;
-  color: var(--gold);
+  color: var(--text-primary);
   flex-shrink: 0;
 }
 
@@ -360,7 +361,7 @@ const handleImport = async () => {
 }
 
 .clear-btn:hover {
-  color: var(--vermillion) !important;
+  color: #8a2222 !important;
 }
 
 /* Import Options */
@@ -385,10 +386,10 @@ const handleImport = async () => {
 
 .form-item :deep(.ant-form-item-label > label) {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 560;
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .preview-editor {
@@ -405,10 +406,10 @@ const handleImport = async () => {
 }
 
 .import-btn {
-  padding: 0 32px !important;
+  padding: 0 28px !important;
   height: 44px;
-  font-weight: 600 !important;
-  letter-spacing: 1px;
+  font-weight: 560 !important;
+  letter-spacing: 0;
 }
 
 .import-btn svg {

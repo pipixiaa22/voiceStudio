@@ -108,10 +108,10 @@ const handleAddTag = async () => {
 }
 
 .selected-tag {
-  background: var(--gold-glow) !important;
-  border: 1px solid rgba(212, 168, 83, 0.3) !important;
-  color: var(--gold) !important;
-  border-radius: var(--radius-sm) !important;
+  background: var(--surface-active) !important;
+  border: 1px solid var(--surface-border) !important;
+  color: var(--text-primary) !important;
+  border-radius: 999px !important;
   padding: 4px 12px !important;
   font-size: 13px !important;
   display: inline-flex !important;
@@ -121,7 +121,7 @@ const handleAddTag = async () => {
 }
 
 .selected-tag:hover {
-  background: rgba(212, 168, 83, 0.2) !important;
+  background: var(--surface-muted) !important;
 }
 
 /* Add Tag Row */
@@ -156,8 +156,8 @@ const handleAddTag = async () => {
 .available-label {
   font-size: 11px;
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  text-transform: none;
+  letter-spacing: 0;
   margin-bottom: var(--space-xs);
   display: block;
 }
@@ -169,10 +169,10 @@ const handleAddTag = async () => {
 }
 
 .available-tag {
-  background: var(--ink-medium) !important;
-  border: 1px solid var(--ink-subtle) !important;
+  background: var(--surface) !important;
+  border: 1px solid var(--surface-border) !important;
   color: var(--text-muted) !important;
-  border-radius: var(--radius-sm) !important;
+  border-radius: 999px !important;
   padding: 4px 10px !important;
   font-size: 12px !important;
   cursor: pointer !important;
@@ -183,9 +183,9 @@ const handleAddTag = async () => {
 }
 
 .available-tag:hover {
-  background: var(--gold-glow) !important;
-  border-color: rgba(212, 168, 83, 0.3) !important;
-  color: var(--gold) !important;
+  background: var(--surface-active) !important;
+  border-color: var(--surface-border-strong) !important;
+  color: var(--text-primary) !important;
 }
 
 .add-icon {

@@ -73,13 +73,13 @@ const handleMenuClick = ({ key }) => {
 
 <style scoped>
 .app-header {
-  background: linear-gradient(180deg, var(--ink-deep) 0%, var(--ink-black) 100%) !important;
+  background: rgba(247, 247, 245, 0.86) !important;
   border-bottom: 1px solid var(--surface-border);
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+  box-shadow: none;
   position: sticky;
   top: 0;
   z-index: 100;
-  backdrop-filter: blur(20px);
+  backdrop-filter: blur(16px);
 }
 
 .header-content {
@@ -95,14 +95,13 @@ const handleMenuClick = ({ key }) => {
 .logo-section {
   display: flex;
   align-items: center;
-  gap: var(--space-md);
+  gap: 10px;
 }
 
 .logo-icon {
-  width: 40px;
-  height: 40px;
-  color: var(--gold);
-  filter: drop-shadow(0 0 10px var(--gold-glow));
+  width: 32px;
+  height: 32px;
+  color: var(--text-primary);
 }
 
 .logo-text {
@@ -113,18 +112,17 @@ const handleMenuClick = ({ key }) => {
 
 .logo-title {
   font-family: var(--font-display);
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--gold);
-  letter-spacing: 4px;
-  text-shadow: 0 0 30px var(--gold-glow);
+  font-size: 18px;
+  font-weight: 650;
+  color: var(--text-primary);
+  letter-spacing: 0;
 }
 
 .logo-subtitle {
   font-size: 11px;
   color: var(--text-muted);
-  letter-spacing: 6px;
-  margin-top: 2px;
+  letter-spacing: 0;
+  margin-top: 1px;
 }
 
 .main-menu {
@@ -133,9 +131,9 @@ const handleMenuClick = ({ key }) => {
 }
 
 .main-menu :deep(.ant-menu-item) {
-  padding: 0 20px !important;
+  padding: 0 16px !important;
   font-size: 14px;
-  letter-spacing: 1px;
+  letter-spacing: 0;
 }
 
 .main-menu :deep(.ant-menu-item svg) {
@@ -146,13 +144,9 @@ const handleMenuClick = ({ key }) => {
 }
 
 .app-content {
-  padding: var(--space-2xl);
+  padding: var(--space-xl);
   min-height: calc(100vh - 64px);
-  background: radial-gradient(
-    ellipse at 50% 0%,
-    rgba(212, 168, 83, 0.03) 0%,
-    transparent 60%
-  );
+  background: var(--paper);
 }
 
 /* Page Transitions */

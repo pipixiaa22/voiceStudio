@@ -1,13 +1,17 @@
 import sys
 import os
 
+import requests as http_requests
+from deep_translator import GoogleTranslator
 from flask import Blueprint, request, jsonify
 from server.models import db, Text, Tag
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from splitter import split_text
-from srt import generate_srt
+from srt import generate_srt, generate_bilingual_srt
+
+MIMO_LLM_URL = 'https://token-plan-cn.xiaomimimo.com/anthropic/v1/messages'
 
 texts_bp = Blueprint('texts', __name__)
 
@@ -106,15 +110,103 @@ def import_text():
     return jsonify(text.to_dict()), 201
 
 
+def _dedup_title(base_title, existing_titles):
+    """Append (1), (2), ... to base_title until it's unique."""
+    if base_title not in existing_titles:
+        return base_title
+    i = 1
+    while f'{base_title}({i})' in existing_titles:
+        i += 1
+    return f'{base_title}({i})'
+
+
+@texts_bp.route('/api/texts/batch-import', methods=['POST'])
+def batch_import():
+    files = request.files.getlist('files')
+    if not files:
+        return jsonify({'error': '没有上传文件'}), 400
+
+    folder_id = request.form.get('folder_id')
+    folder_id = int(folder_id) if folder_id else None
+
+    existing_titles = {t.title for t in Text.query.with_entities(Text.title).all()}
+    imported = []
+
+    for file in files:
+        if not file.filename.endswith('.txt'):
+            continue
+        content = file.read().decode('utf-8')
+        base_title = file.filename.replace('.txt', '')
+        title = _dedup_title(base_title, existing_titles)
+        existing_titles.add(title)
+
+        text = Text(title=title, content=content, folder_id=folder_id)
+        db.session.add(text)
+        imported.append(text)
+
+    db.session.commit()
+    return jsonify([t.to_dict() for t in imported]), 201
+
+
+@texts_bp.route('/api/texts/generate-srt', methods=['POST'])
+def generate_srt_preview():
+    data = request.get_json()
+    if not data or not data.get('content'):
+        return jsonify({'error': '内容不能为空'}), 400
+
+    content = data['content']
+    speed = float(data.get('speed', 5))
+    max_chars = int(data.get('max_chars', 20))
+    gap = float(data.get('gap', 1.0))
+
+    segments = split_text(content, max_chars=max_chars)
+    srt_content = generate_srt(segments, chars_per_second=speed, gap=gap)
+
+    return jsonify({'srt': srt_content, 'segments': len(segments), 'segments_list': segments})
+
+
+@texts_bp.route('/api/texts/generate-bilingual-srt', methods=['POST'])
+def generate_bilingual_srt_preview():
+    data = request.get_json()
+    if not data or not data.get('content'):
+        return jsonify({'error': '内容不能为空'}), 400
+
+    content = data['content']
+    speed = float(data.get('speed', 5))
+    max_chars = int(data.get('max_chars', 20))
+    gap = float(data.get('gap', 1.0))
+
+    segments = split_text(content, max_chars=max_chars)
+
+    translator = GoogleTranslator(source='zh-CN', target='en')
+    translations = []
+    for seg in segments:
+        try:
+            translated = translator.translate(seg)
+            translations.append(translated or '')
+        except Exception:
+            translations.append('')
+
+    srt_content = generate_bilingual_srt(segments, translations, chars_per_second=speed, gap=gap)
+
+    return jsonify({
+        'srt': srt_content,
+        'segments': len(segments),
+        'segments_list': segments,
+        'translations': translations,
+    })
+
+
 @texts_bp.route('/api/texts/<int:text_id>/srt', methods=['GET'])
 def export_srt(text_id):
     text = Text.query.get_or_404(text_id)
 
     speed = float(request.args.get('speed', 5))
     max_chars = int(request.args.get('max_chars', 20))
+    gap = float(request.args.get('gap', 1.0))
 
     segments = split_text(text.content, max_chars=max_chars)
-    srt_content = generate_srt(segments, chars_per_second=speed)
+    srt_content = generate_srt(segments, chars_per_second=speed, gap=gap)
 
     # URL-encode the filename to handle non-ASCII characters
     from urllib.parse import quote

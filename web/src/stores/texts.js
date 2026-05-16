@@ -43,6 +43,15 @@ export const useTextsStore = defineStore('texts', {
       this.texts.unshift(data)
       return data
     },
+    async batchImport(formData) {
+      const { data } = await textsApi.batchImport(formData)
+      this.texts.unshift(...data)
+      return data
+    },
+    async previewSrt(id, params) {
+      const response = await textsApi.previewSrt(id, params)
+      return response.data
+    },
     async exportSrt(id, params) {
       const response = await textsApi.exportSrt(id, params)
 

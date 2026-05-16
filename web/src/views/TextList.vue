@@ -18,6 +18,14 @@
             <span class="text-count">{{ filteredTexts.length }} 篇文本</span>
           </div>
           <div class="header-actions">
+            <a-button class="settings-btn" @click="settingsVisible = true">
+              <template #icon>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+              </template>
+            </a-button>
             <a-input-search
               v-model:value="searchQuery"
               placeholder="搜索文本..."
@@ -32,6 +40,33 @@
               <a-select-option value="desc">降序</a-select-option>
               <a-select-option value="asc">升序</a-select-option>
             </a-select>
+            <a-button class="create-btn" @click="voiceSynthVisible = true">
+              <template #icon>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                  <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
+                </svg>
+              </template>
+              语音合成
+            </a-button>
+            <a-button class="create-btn" @click="quickGenVisible = true">
+              <template #icon>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                </svg>
+              </template>
+              快速生成
+            </a-button>
+            <a-button class="create-btn" @click="batchModalVisible = true">
+              <template #icon>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+              </template>
+              批量导入
+            </a-button>
             <router-link to="/edit">
               <a-button type="primary" class="create-btn">
                 <template #icon>
@@ -49,75 +84,36 @@
         <div class="ink-divider"></div>
 
         <!-- Table Section -->
-        <a-spin :spinning="loading" tip="载入中...">
-          <a-table
-            :dataSource="filteredTexts"
-            :columns="columns"
-            rowKey="id"
-            :pagination="{ pageSize: 20, hideOnSinglePage: true }"
-            class="text-table"
-            :customRow="(record) => ({
-              draggable: true,
-              onDragstart: (e) => handleTextDragStart(record.id, e),
-              onDragend: handleTextDragEnd,
-            })"
-          >
-            <template #bodyCell="{ column, record }">
-              <template v-if="column.key === 'title'">
-                <router-link :to="`/edit/${record.id}`" class="text-link">
-                  <span class="text-title">{{ record.title }}</span>
-                </router-link>
-              </template>
-              <template v-else-if="column.key === 'tags'">
-                <a-tag v-for="tag in record.tags" :key="tag.id" class="custom-tag">
-                  {{ tag.name }}
-                </a-tag>
-              </template>
-              <template v-else-if="column.key === 'created_at'">
-                <span class="date-text">{{ formatDate(record.created_at) }}</span>
-              </template>
-              <template v-else-if="column.key === 'updated_at'">
-                <span class="date-text">{{ formatDate(record.updated_at) }}</span>
-              </template>
-              <template v-else-if="column.key === 'action'">
-                <a-space :size="8">
-                  <a-tooltip title="导出 SRT 字幕">
-                    <a-button size="small" class="action-btn" @click="handleExport(record)">
-                      <template #icon>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                          <polyline points="7 10 12 15 17 10"/>
-                          <line x1="12" y1="15" x2="12" y2="3"/>
-                        </svg>
-                      </template>
-                    </a-button>
-                  </a-tooltip>
-                  <a-popconfirm
-                    title="确定删除此文本？"
-                    description="删除后不可恢复"
-                    @confirm="handleDelete(record.id)"
-                    okText="删除"
-                    cancelText="取消"
-                    okButtonProps="{ danger: true }"
-                  >
-                    <a-tooltip title="删除文本">
-                      <a-button size="small" danger class="action-btn">
-                        <template #icon>
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polyline points="3 6 5 6 21 6"/>
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                          </svg>
-                        </template>
-                      </a-button>
-                    </a-tooltip>
-                  </a-popconfirm>
-                </a-space>
-              </template>
-            </template>
-          </a-table>
-        </a-spin>
+        <TextTable
+          :texts="filteredTexts"
+          :loading="loading"
+          @preview="handlePreview"
+          @export="handleExport"
+          @delete="handleDelete"
+        />
       </a-layout-content>
     </a-layout>
+
+    <!-- Modals -->
+    <SrtExportModal
+      v-model:open="exportModalVisible"
+      :content="exportContent"
+      :title="exportTitle"
+    />
+    <ApiSettingsModal v-model:open="settingsVisible" />
+    <VoiceSynthModal v-model:open="voiceSynthVisible" />
+    <QuickGenerateModal v-model:open="quickGenVisible" />
+    <SrtPreviewModal
+      v-model:open="previewVisible"
+      :title="previewTitle"
+      :content="previewContent"
+      :loading="previewLoading"
+    />
+    <BatchImportModal
+      v-model:open="batchModalVisible"
+      :folders="folders"
+      @imported="fetchTexts"
+    />
   </div>
 </template>
 
@@ -125,46 +121,52 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { useTextsStore } from '../stores/texts'
+import { useFoldersStore } from '../stores/folders'
+import { useSettings } from '../stores/settings'
+import { textsApi } from '../api'
 import FolderTree from '../components/FolderTree.vue'
+import TextTable from '../components/TextTable.vue'
+import SrtPreviewModal from '../components/SrtPreviewModal.vue'
+import BatchImportModal from '../components/BatchImportModal.vue'
+import QuickGenerateModal from '../components/QuickGenerateModal.vue'
+import VoiceSynthModal from '../components/VoiceSynthModal.vue'
+import ApiSettingsModal from '../components/ApiSettingsModal.vue'
+import SrtExportModal from '../components/SrtExportModal.vue'
 
 const textsStore = useTextsStore()
+const foldersStore = useFoldersStore()
+const { llmKey } = useSettings()
+
 const selectedFolderId = ref(null)
 const searchQuery = ref('')
 const sortBy = ref('created_at')
 const sortOrder = ref('desc')
 
 const loading = computed(() => textsStore.loading)
+const folders = computed(() => foldersStore.folders)
 
-const columns = [
-  {
-    title: '标题',
-    key: 'title',
-    dataIndex: 'title',
-    width: '30%',
-    ellipsis: true,
-  },
-  {
-    title: '标签',
-    key: 'tags',
-    width: '20%',
-  },
-  {
-    title: '创建时间',
-    key: 'created_at',
-    width: '18%',
-  },
-  {
-    title: '更新时间',
-    key: 'updated_at',
-    width: '18%',
-  },
-  {
-    title: '操作',
-    key: 'action',
-    width: '14%',
-    align: 'center',
-  },
-]
+// SRT Preview state
+const previewVisible = ref(false)
+const previewContent = ref('')
+const previewTitle = ref('')
+const previewLoading = ref(false)
+
+// Batch Import state
+const batchModalVisible = ref(false)
+
+// Quick Generate state
+const quickGenVisible = ref(false)
+
+// Voice Synth state
+const voiceSynthVisible = ref(false)
+
+// Export Modal state
+const exportModalVisible = ref(false)
+const exportContent = ref('')
+const exportTitle = ref('')
+
+// Settings state
+const settingsVisible = ref(false)
 
 const fetchTexts = () => {
   textsStore.fetchTexts({
@@ -174,7 +176,10 @@ const fetchTexts = () => {
   })
 }
 
-onMounted(fetchTexts)
+onMounted(() => {
+  fetchTexts()
+  foldersStore.fetchFolders()
+})
 watch([selectedFolderId, sortBy, sortOrder], fetchTexts)
 
 const filteredTexts = computed(() => {
@@ -185,52 +190,30 @@ const filteredTexts = computed(() => {
   )
 })
 
-const formatDate = (dateStr) => {
-  if (!dateStr) return '-'
-  const date = new Date(dateStr)
-  const now = new Date()
-  const diff = now - date
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-
-  if (days === 0) {
-    const hours = Math.floor(diff / (1000 * 60 * 60))
-    if (hours === 0) {
-      const minutes = Math.floor(diff / (1000 * 60))
-      return minutes <= 1 ? '刚刚' : `${minutes} 分钟前`
-    }
-    return `${hours} 小时前`
-  } else if (days === 1) {
-    return '昨天'
-  } else if (days < 7) {
-    return `${days} 天前`
+const handlePreview = async (record) => {
+  previewTitle.value = record.title
+  previewContent.value = ''
+  previewLoading.value = true
+  previewVisible.value = true
+  try {
+    previewContent.value = await textsStore.previewSrt(record.id, { speed: 5, max_chars: 20 })
+  } catch {
+    message.error('预览失败')
+    previewVisible.value = false
+  } finally {
+    previewLoading.value = false
   }
-  return date.toLocaleDateString('zh-CN', {
-    month: 'short',
-    day: 'numeric',
-  })
 }
 
-const handleExport = async (record) => {
-  await textsStore.exportSrt(record.id, { speed: 5, max_chars: 20 })
-  message.success(`已导出：${record.title}.srt`)
+const handleExport = (record) => {
+  exportContent.value = record.content
+  exportTitle.value = record.title
+  exportModalVisible.value = true
 }
 
 const handleDelete = async (id) => {
   await textsStore.deleteText(id)
   message.success('已删除')
-}
-
-// Drag and drop handlers for text rows
-const handleTextDragStart = (textId, event) => {
-  event.dataTransfer.setData('textId', textId)
-  event.dataTransfer.effectAllowed = 'move'
-  // Add visual feedback
-  event.target.closest('tr').classList.add('dragging')
-}
-
-const handleTextDragEnd = (event) => {
-  // Remove visual feedback
-  event.target.closest('tr')?.classList.remove('dragging')
 }
 </script>
 
@@ -241,21 +224,22 @@ const handleTextDragEnd = (event) => {
 }
 
 .sidebar {
-  background: var(--surface-card) !important;
+  background: var(--surface) !important;
   border-radius: var(--radius-lg) 0 0 var(--radius-lg);
   border: 1px solid var(--surface-border);
   border-right: none;
-  padding: var(--space-lg);
+  padding: var(--space-md);
   overflow-y: auto;
   max-height: calc(100vh - 130px);
 }
 
 .main-content {
-  background: var(--surface-card) !important;
+  background: var(--surface) !important;
   border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
   border: 1px solid var(--surface-border);
-  padding: var(--space-xl);
+  padding: var(--space-lg);
   min-height: calc(100vh - 130px);
+  box-shadow: var(--shadow-sm);
 }
 
 .content-header {
@@ -274,16 +258,16 @@ const handleTextDragEnd = (event) => {
 
 .page-title {
   font-family: var(--font-display);
-  font-size: 28px;
-  font-weight: 700;
+  font-size: 24px;
+  font-weight: 650;
   color: var(--text-primary);
   margin: 0;
-  letter-spacing: 2px;
+  letter-spacing: 0;
 }
 
 .title-accent {
-  color: var(--gold);
-  text-shadow: 0 0 20px var(--gold-glow);
+  color: var(--text-primary);
+  text-shadow: none;
 }
 
 .text-count {
@@ -306,10 +290,10 @@ const handleTextDragEnd = (event) => {
 }
 
 .create-btn {
-  padding: 0 20px !important;
+  padding: 0 16px !important;
   height: 36px;
-  font-weight: 600 !important;
-  letter-spacing: 1px;
+  font-weight: 520 !important;
+  letter-spacing: 0;
 }
 
 .create-btn svg {
@@ -318,68 +302,18 @@ const handleTextDragEnd = (event) => {
   margin-right: 6px;
 }
 
-/* Table Styling */
-.text-table {
-  margin-top: var(--space-md);
-}
-
-.text-link {
-  text-decoration: none;
-}
-
-.text-title {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-primary);
-  transition: color var(--transition-fast);
-}
-
-.text-link:hover .text-title {
-  color: var(--gold);
-}
-
-.custom-tag {
-  background: rgba(212, 168, 83, 0.1) !important;
-  border: 1px solid rgba(212, 168, 83, 0.2) !important;
-  color: var(--gold) !important;
-  border-radius: var(--radius-sm) !important;
-  font-size: 12px !important;
-  padding: 2px 10px !important;
-}
-
-.date-text {
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.action-btn {
-  width: 32px !important;
-  height: 32px !important;
+.settings-btn {
+  width: 36px !important;
+  height: 36px;
   padding: 0 !important;
-  display: inline-flex !important;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
-.action-btn svg {
-  width: 15px;
-  height: 15px;
-}
-
-/* Dragging State */
-.text-table :deep(.ant-table-row) {
-  cursor: grab;
-  transition: all var(--transition-fast);
-}
-
-.text-table :deep(.ant-table-row:hover) {
-  background: var(--surface-hover);
-}
-
-.text-table :deep(.ant-table-row.dragging) {
-  opacity: 0.5;
-  cursor: grabbing;
-  background: var(--gold-glow);
+.settings-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
 /* Responsive */

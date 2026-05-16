@@ -19,7 +19,7 @@
         <template #overlay>
           <a-menu @click="handleRootMenuClick">
             <a-menu-item key="add-root">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; margin-right: 8px; vertical-align: -2px">
                 <line x1="12" y1="5" x2="12" y2="19"/>
                 <line x1="5" y1="12" x2="19" y2="12"/>
               </svg>
@@ -92,41 +92,7 @@
           </svg>
           <span class="folder-name">{{ folder.name }}</span>
         </div>
-        <a-dropdown :trigger="['click']" placement="bottomRight">
-          <a-button type="text" size="small" class="more-btn" @click.stop>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="1"/>
-              <circle cx="19" cy="12" r="1"/>
-              <circle cx="5" cy="12" r="1"/>
-            </svg>
-          </a-button>
-          <template #overlay>
-            <a-menu @click="({ key }) => handleFolderAction(key, folder)">
-              <a-menu-item key="add-child">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px">
-                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-                  <line x1="12" y1="11" x2="12" y2="17"/>
-                  <line x1="9" y1="14" x2="15" y2="14"/>
-                </svg>
-                创建子文件夹
-              </a-menu-item>
-              <a-menu-item key="rename">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px">
-                  <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
-                </svg>
-                重命名
-              </a-menu-item>
-              <a-menu-divider />
-              <a-menu-item key="delete" danger>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px">
-                  <polyline points="3 6 5 6 21 6"/>
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                </svg>
-                删除文件夹
-              </a-menu-item>
-            </a-menu>
-          </template>
-        </a-dropdown>
+        <FolderActions @action="(key) => handleFolderAction(key, folder)" />
       </div>
     </div>
 
@@ -154,6 +120,7 @@ import { ref, computed, onMounted } from 'vue'
 import { Modal, message } from 'ant-design-vue'
 import { useFoldersStore } from '../stores/folders'
 import { useTextsStore } from '../stores/texts'
+import FolderActions from './FolderActions.vue'
 
 const props = defineProps({
   selectedFolderId: { type: Number, default: null }
@@ -312,20 +279,20 @@ const handleDrop = async (folderId, event) => {
 
 .tree-title {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 560;
   color: var(--text-secondary);
   margin: 0;
   display: flex;
   align-items: center;
   gap: var(--space-sm);
-  text-transform: uppercase;
-  letter-spacing: 2px;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .tree-icon {
   width: 18px;
   height: 18px;
-  color: var(--gold);
+  color: var(--text-secondary);
 }
 
 .add-btn {
@@ -341,8 +308,8 @@ const handleDrop = async (folderId, event) => {
 }
 
 .add-btn:hover {
-  color: var(--gold) !important;
-  background: var(--gold-glow) !important;
+  color: var(--text-primary) !important;
+  background: var(--surface-hover) !important;
 }
 
 .add-btn svg {
@@ -403,21 +370,21 @@ const handleDrop = async (folderId, event) => {
 }
 
 .folder-item.active {
-  background: var(--gold-glow);
-  border-left: 3px solid var(--gold);
+  background: var(--surface-active);
+  border-left: 3px solid var(--text-primary);
   padding-left: 9px;
 }
 
 .folder-item.active .folder-name {
-  color: var(--gold);
-  font-weight: 500;
+  color: var(--text-primary);
+  font-weight: 560;
 }
 
 /* Drag and Drop States */
 .folder-item.drag-over {
-  background: var(--gold-glow) !important;
-  border-color: var(--gold) !important;
-  box-shadow: 0 0 20px var(--gold-glow);
+  background: var(--surface-active) !important;
+  border-color: var(--text-primary) !important;
+  box-shadow: var(--shadow-focus);
 }
 
 .folder-item.dragging {
@@ -439,7 +406,7 @@ const handleDrop = async (folderId, event) => {
 }
 
 .folder-item.active .folder-icon {
-  color: var(--gold);
+  color: var(--text-primary);
 }
 
 .folder-name {
@@ -454,32 +421,19 @@ const handleDrop = async (folderId, event) => {
 .folder-count {
   font-size: 11px;
   color: var(--text-muted);
-  background: var(--ink-subtle);
+  background: var(--surface-muted);
   padding: 2px 6px;
   border-radius: 10px;
   min-width: 20px;
   text-align: center;
 }
 
-.more-btn {
-  color: var(--text-muted) !important;
-  width: 24px;
-  height: 24px;
-  padding: 0 !important;
+.folder-item :deep(.more-btn) {
   opacity: 0;
-  transition: all var(--transition-fast) !important;
+  transition: all var(--transition-fast);
 }
 
-.folder-item:hover .more-btn {
+.folder-item:hover :deep(.more-btn) {
   opacity: 1;
-}
-
-.more-btn:hover {
-  color: var(--gold) !important;
-}
-
-.more-btn svg {
-  width: 14px;
-  height: 14px;
 }
 </style>
