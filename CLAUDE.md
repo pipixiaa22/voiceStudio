@@ -4,79 +4,77 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**墨 · 影 字幕工坊** — a Chinese subtitle generation tool that takes Chinese text, splits it by punctuation into segments, and produces SRT subtitle files. Two interfaces: a CLI (`main.py`) and a web application (Flask backend + Vue 3 frontend).
+SRT subtitle generator for video editors (primarily CapCut/剪映). Converts Chinese text into timed SRT subtitle files with intelligent punctuation-based segmentation.
 
 ## Commands
 
-### Run all tests
+### CLI Usage
 ```bash
-uv run pytest
+# Generate SRT from file
+uv run main.py input.txt -o output.srt
+
+# Generate SRT from stdin
+echo "你好吗？我很好。" | uv run main.py -o output.srt
+
+# Options: --speed (chars/sec, default 5), --max-chars (default 20)
 ```
 
-### Run a single test file
+### Web Server
 ```bash
-uv run pytest tests/test_splitter.py
-uv run pytest server/tests/test_texts.py
-```
+# Start both Flask backend and Vue frontend
+./start.sh start
 
-### Start/stop both servers (Flask + Vue dev server)
-```bash
-./start.sh start    # Flask on :5002, Vue dev on :3000
+# Stop servers
 ./start.sh stop
+
+# Check status
 ./start.sh status
 ```
 
-### Run Flask backend only
+### Development
 ```bash
-uv run python -m server.app
-```
+# Run all tests
+uv run pytest
 
-### Run Vue frontend only
-```bash
-cd web && pnpm run dev
-```
+# Run specific test file
+uv run pytest tests/test_splitter.py -v
 
-### Build Vue frontend (outputs to server/static/)
-```bash
+# Build frontend for production
 cd web && pnpm run build
-```
-
-### CLI usage
-```bash
-uv run python main.py input.txt --speed 5 --max-chars 20 -o output.srt
 ```
 
 ## Architecture
 
-### Core library (root directory)
-- **splitter.py** — Chinese text segmentation by punctuation (sentence-ending `。？！…` first, then comma-level `，、；：` for long segments). Handles forced splitting when no punctuation exists.
-- **srt.py** — Converts segment list to SRT format with calculated timestamps based on characters-per-second speed.
-- **main.py** — CLI wrapper combining splitter + srt.
+### Two Interfaces, Shared Core
+- **CLI** (`main.py`): Direct command-line tool using `splitter.py` and `srt.py`
+- **Web** (`server/` + `web/`): Flask API + Vue 3 SPA, same core modules
 
-### Flask backend (`server/`)
-- **app.py** — Factory pattern (`create_app`). SQLite DB at `data.db` in project root. Registers three blueprints. Port 5002.
-- **models.py** — Three models: `Text` (content with title, folder, tags), `Folder` (hierarchical via self-referencing `parent_id`), `Tag` (many-to-many with Text via `text_tags` join table).
-- **routes/texts.py** — CRUD + `.txt` import + SRT export endpoint (`/api/texts/<id>/srt`). Imports `splitter` and `srt` from root.
-- **routes/folders.py** — CRUD for hierarchical folders.
-- **routes/tags.py** — List and create tags.
+### Python Backend (`server/`)
+- `app.py` — Flask app factory with SQLite, runs on port 5002
+- `models.py` — SQLAlchemy models: Text, Folder (self-referential hierarchy), Tag (many-to-many)
+- `routes/` — REST API blueprints: texts, folders, tags, tts
 
-### Vue frontend (`web/`)
-- **Vite** with dev proxy: `/api` → `localhost:5002`. Build output goes to `server/static/` so Flask can serve the SPA.
-- **Stack**: Vue 3, Pinia (stores: `texts.js`, `folders.js`, `tags.js`), Vue Router, Ant Design Vue 4, Axios.
-- **Routes**: `/` (TextList), `/edit/:id?` (TextEdit), `/import` (Import).
-- **Components**: `FolderTree.vue` (drag-and-drop folder hierarchy), `TagSelector.vue`.
-- **API layer**: `src/api/index.js` — axios instance with `/api` base URL, exports `textsApi`, `foldersApi`, `tagsApi`.
-- **Theme**: Cinematic ink & shadow aesthetic via CSS custom properties in `styles/theme.css`.
+### Vue Frontend (`web/`)
+- Vue 3 + Vite + Pinia + Ant Design Vue
+- `src/stores/` — Pinia state management for texts, folders, tags
+- `src/api/` — Axios wrapper calling Flask API
+- Vite dev server proxies `/api/*` to Flask on port 5002
 
-### Test structure
-- `tests/` — Root-level tests for `splitter.py` and `srt.py` (pure Python, no Flask).
-- `server/tests/` — Flask integration tests using in-memory SQLite via `conftest.py` fixtures (`app`, `client`, `db`).
-- pytest config in `pyproject.toml`: `pythonpath = [".", "server"]`, `testpaths = ["tests", "server/tests"]`.
+### Core Modules (Root)
+- `splitter.py` — Chinese text segmentation by punctuation (。？！…then，、；：)
+- `srt.py` — SRT format generator with timestamp calculation
 
-## Key Patterns
+## Key Design Decisions
 
-- The Flask server imports `splitter` and `srt` from the project root via `sys.path` manipulation in `routes/texts.py`.
-- Vue dev server proxies `/api/*` to Flask, so frontend uses relative URLs (`/api/texts`).
-- Production: build Vue (`pnpm build`) → outputs to `server/static/` → Flask serves the SPA at `/`.
-- `data.db` is SQLite and committed to the repo (small, local-only project).
-- UI text and API error messages are in Chinese.
+1. **Punctuation splitting**: Sentences split by 。？！… first, then by ，、；：if too long, then force-split
+2. **Trailing punctuation**: 。and，are stripped from segment endings; ？and！are preserved
+3. **SRT filenames**: Use RFC 5987 encoding (`filename*=UTF-8''...`) for Chinese filenames
+4. **Port config**: Flask uses port 5002 (5000/5001 often occupied on macOS), Vue on 3000
+
+## Database
+
+SQLite stored at `data.db` in project root. Tables: `texts`, `folders`, `tags`, `text_tags` (association).
+
+## Testing
+
+Tests in `tests/` (core modules) and `server/tests/` (API endpoints). Pytest configured in `pyproject.toml` with `pythonpath = [".", "server"]`.
