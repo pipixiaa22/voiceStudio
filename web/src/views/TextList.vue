@@ -26,12 +26,20 @@
                 </svg>
               </template>
             </a-button>
-            <a-input-search
+            <a-input
               v-model:value="searchQuery"
-              placeholder="搜索文本..."
+              placeholder="搜索文本... (⌘K)"
               class="search-input"
               allowClear
-            />
+              @keydown.escape="searchQuery = ''"
+            >
+              <template #prefix>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; color: var(--text-muted)">
+                  <circle cx="11" cy="11" r="8"/>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+              </template>
+            </a-input>
             <a-select v-model:value="sortBy" class="sort-select">
               <a-select-option value="created_at">创建时间</a-select-option>
               <a-select-option value="updated_at">更新时间</a-select-option>
@@ -118,7 +126,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { useTextsStore } from '../stores/texts'
 import { useFoldersStore } from '../stores/folders'
@@ -144,6 +152,14 @@ const sortOrder = ref('desc')
 
 const loading = computed(() => textsStore.loading)
 const folders = computed(() => foldersStore.folders)
+
+// Keyboard shortcut for search (⌘K)
+const handleKeydown = (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault()
+    document.querySelector('.search-input input')?.focus()
+  }
+}
 
 // SRT Preview state
 const previewVisible = ref(false)
@@ -179,6 +195,11 @@ const fetchTexts = () => {
 onMounted(() => {
   fetchTexts()
   foldersStore.fetchFolders()
+  document.addEventListener('keydown', handleKeydown)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeydown)
 })
 watch([selectedFolderId, sortBy, sortOrder], fetchTexts)
 

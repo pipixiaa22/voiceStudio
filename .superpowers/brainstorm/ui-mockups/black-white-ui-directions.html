@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>墨影 UI 方向草图</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+        background: #f7f7f5;
+        color: #111;
+      }
+      .page {
+        width: min(1280px, calc(100vw - 48px));
+        margin: 0 auto;
+        padding: 40px 0 56px;
+      }
+      .intro {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 24px;
+        margin-bottom: 24px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 30px;
+        font-weight: 620;
+        letter-spacing: 0;
+      }
+      .intro p {
+        margin: 0;
+        color: #62605a;
+        font-size: 14px;
+        line-height: 1.7;
+      }
+      .hint {
+        border: 1px solid #d8d7d2;
+        border-radius: 999px;
+        padding: 8px 14px;
+        font-size: 12px;
+        color: #4f4d48;
+        white-space: nowrap;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 18px;
+      }
+      .option {
+        background: #fff;
+        border: 1px solid #deddd8;
+        border-radius: 14px;
+        padding: 14px;
+        cursor: pointer;
+        transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease;
+      }
+      .option:hover {
+        transform: translateY(-2px);
+        border-color: #111;
+        box-shadow: 0 18px 50px rgba(0,0,0,.08);
+      }
+      .option.selected {
+        border-color: #111;
+        box-shadow: 0 0 0 2px #111 inset, 0 18px 50px rgba(0,0,0,.1);
+      }
+      .mock {
+        overflow: hidden;
+        border: 1px solid #d8d7d2;
+        border-radius: 10px;
+        background: #fafaf8;
+        min-height: 420px;
+      }
+      .mock.dark {
+        background: #0f0f0f;
+        color: #f5f5f2;
+        border-color: #2b2b2b;
+      }
+      .bar {
+        height: 48px;
+        border-bottom: 1px solid #deddd8;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 18px;
+        font-size: 13px;
+      }
+      .dark .bar { border-color: #2b2b2b; }
+      .brand { font-weight: 650; }
+      .nav { display: flex; gap: 10px; color: #77736c; }
+      .dark .nav { color: #aaa; }
+      .pill, .ghost, .solid {
+        height: 26px;
+        border-radius: 999px;
+        padding: 0 11px;
+        display: inline-flex;
+        align-items: center;
+        font-size: 12px;
+      }
+      .pill { background: #111; color: #fff; }
+      .dark .pill { background: #f5f5f2; color: #111; }
+      .ghost { border: 1px solid #d8d7d2; color: #555; }
+      .dark .ghost { border-color: #3b3b3b; color: #c8c8c4; }
+      .solid { background: #111; color: #fff; border-radius: 8px; }
+      .dark .solid { background: #f5f5f2; color: #111; }
+      .workspace {
+        display: grid;
+        grid-template-columns: 116px 1fr;
+        min-height: 372px;
+      }
+      .side {
+        border-right: 1px solid #deddd8;
+        padding: 16px 10px;
+      }
+      .dark .side { border-color: #2b2b2b; }
+      .side-line {
+        height: 28px;
+        border-radius: 7px;
+        margin-bottom: 6px;
+        background: transparent;
+        color: #66625c;
+        display: flex;
+        align-items: center;
+        padding: 0 9px;
+        font-size: 12px;
+      }
+      .side-line.active { background: #eeeDEA; color: #111; }
+      .dark .side-line { color: #aaa; }
+      .dark .side-line.active { background: #242424; color: #fff; }
+      .content { padding: 18px; }
+      .content-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+      }
+      h2 {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 620;
+      }
+      .tools { display: flex; gap: 7px; }
+      .search {
+        height: 34px;
+        border: 1px solid #d8d7d2;
+        border-radius: 8px;
+        padding: 0 12px;
+        color: #8a867d;
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+      .dark .search { border-color: #333; color: #aaa; }
+      .row {
+        display: grid;
+        grid-template-columns: 1fr 72px;
+        gap: 10px;
+        padding: 12px 0;
+        border-bottom: 1px solid #ecebe7;
+      }
+      .dark .row { border-color: #242424; }
+      .title { font-size: 13px; font-weight: 560; margin-bottom: 4px; }
+      .meta { color: #858179; font-size: 11px; }
+      .dark .meta { color: #858585; }
+      .tag {
+        justify-self: end;
+        align-self: start;
+        border: 1px solid #d8d7d2;
+        border-radius: 999px;
+        padding: 3px 8px;
+        color: #555;
+        font-size: 10px;
+      }
+      .dark .tag { border-color: #333; color: #bbb; }
+      .editor {
+        min-height: 290px;
+        border: 1px solid #d8d7d2;
+        border-radius: 10px;
+        padding: 18px;
+        background: #fff;
+        color: #222;
+      }
+      .dark .editor { background: #151515; border-color: #333; color: #eee; }
+      .editor-title {
+        font-size: 26px;
+        font-weight: 620;
+        margin-bottom: 18px;
+      }
+      .editor-lines div {
+        height: 10px;
+        background: #ecebe7;
+        border-radius: 999px;
+        margin-bottom: 12px;
+      }
+      .dark .editor-lines div { background: #2b2b2b; }
+      .label {
+        margin: 14px 2px 2px;
+      }
+      .label h3 {
+        margin: 0 0 6px;
+        font-size: 16px;
+        font-weight: 640;
+      }
+      .label p {
+        margin: 0;
+        font-size: 13px;
+        color: #62605a;
+        line-height: 1.6;
+      }
+      @media (max-width: 980px) {
+        .grid { grid-template-columns: 1fr; }
+        .intro { align-items: flex-start; flex-direction: column; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="intro">
+        <div>
+          <h1>黑白简朴 UI 方向</h1>
+          <p>目标是从现在的“墨金电影感”收敛到接近 ChatGPT 的低噪声、好读、工具感。点一下你更喜欢的方向，或者直接告诉我哪部分想混搭。</p>
+        </div>
+        <div class="hint">点击卡片选择偏好</div>
+      </section>
+
+      <section class="grid">
+        <article class="option" onclick="selectOption(this)" data-choice="A">
+          <div class="mock">
+            <div class="bar">
+              <div class="brand">墨影字幕工坊</div>
+              <div class="nav"><span>文本库</span><span>导入</span></div>
+            </div>
+            <div class="workspace">
+              <aside class="side">
+                <div class="side-line active">全部文本</div>
+                <div class="side-line">短片脚本</div>
+                <div class="side-line">口播素材</div>
+              </aside>
+              <div class="content">
+                <div class="content-head">
+                  <h2>文本库</h2>
+                  <div class="tools"><span class="ghost">搜索</span><span class="solid">新建</span></div>
+                </div>
+                <div class="search">搜索文本...</div>
+                <div class="row"><div><div class="title">山间夜雨字幕稿</div><div class="meta">昨天更新 · 预计 26 段</div></div><span class="tag">脚本</span></div>
+                <div class="row"><div><div class="title">产品演示旁白</div><div class="meta">3 天前 · 预计 41 段</div></div><span class="tag">口播</span></div>
+                <div class="row"><div><div class="title">访谈剪辑字幕</div><div class="meta">5 天前 · 预计 63 段</div></div><span class="tag">访谈</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="label">
+            <h3>A. 亮色 ChatGPT 风</h3>
+            <p>白底、细边、低饱和灰。最接近 ChatGPT 的清爽工具感，适合长时间整理文本。</p>
+          </div>
+        </article>
+
+        <article class="option" onclick="selectOption(this)" data-choice="B">
+          <div class="mock dark">
+            <div class="bar">
+              <div class="brand">墨影字幕工坊</div>
+              <div class="nav"><span>文本库</span><span>导入</span></div>
+            </div>
+            <div class="workspace">
+              <aside class="side">
+                <div class="side-line active">全部文本</div>
+                <div class="side-line">短片脚本</div>
+                <div class="side-line">口播素材</div>
+              </aside>
+              <div class="content">
+                <div class="content-head">
+                  <h2>文本库</h2>
+                  <div class="tools"><span class="ghost">搜索</span><span class="solid">新建</span></div>
+                </div>
+                <div class="search">搜索文本...</div>
+                <div class="row"><div><div class="title">山间夜雨字幕稿</div><div class="meta">昨天更新 · 预计 26 段</div></div><span class="tag">脚本</span></div>
+                <div class="row"><div><div class="title">产品演示旁白</div><div class="meta">3 天前 · 预计 41 段</div></div><span class="tag">口播</span></div>
+                <div class="row"><div><div class="title">访谈剪辑字幕</div><div class="meta">5 天前 · 预计 63 段</div></div><span class="tag">访谈</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="label">
+            <h3>B. 黑色极简工作台</h3>
+            <p>黑底、白字、只保留灰阶层次。比 A 更有沉浸感，但仍然简朴，不再用金色和红色。</p>
+          </div>
+        </article>
+
+        <article class="option" onclick="selectOption(this)" data-choice="C">
+          <div class="mock">
+            <div class="bar">
+              <div class="brand">墨影</div>
+              <div class="tools"><span class="ghost">导出</span><span class="pill">保存</span></div>
+            </div>
+            <div class="content">
+              <div class="editor">
+                <div class="editor-title">山间夜雨字幕稿</div>
+                <div class="editor-lines">
+                  <div style="width:92%"></div>
+                  <div style="width:83%"></div>
+                  <div style="width:88%"></div>
+                  <div style="width:72%"></div>
+                  <div style="width:95%"></div>
+                  <div style="width:78%"></div>
+                  <div style="width:86%"></div>
+                  <div style="width:64%"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="label">
+            <h3>C. 文档编辑器优先</h3>
+            <p>弱化装饰和导航，把编辑区变成主角。适合你最常用的是写稿、改稿、导出字幕。</p>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <script>
+      function selectOption(el) {
+        document.querySelectorAll('.option').forEach(item => item.classList.remove('selected'));
+        el.classList.add('selected');
+        localStorage.setItem('moying-ui-choice', el.dataset.choice);
+      }
+    </script>
+  </body>
+</html>

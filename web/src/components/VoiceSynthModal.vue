@@ -112,10 +112,10 @@
           <a-space :size="8">
             <a-button
               size="small"
-              :disabled="selectedIndices.size < 2"
-              @click="mergeSelected"
+              :disabled="!canGroupSelected"
+              @click="handleGroupSelected"
             >
-              合并选中 ({{ selectedIndices.size }})
+              合成选中 ({{ selectedIndices.size }})
             </a-button>
             <a-button
               type="primary"
@@ -130,70 +130,93 @@
         </div>
 
         <div class="segment-items">
-          <div
-            v-for="(seg, i) in segments"
-            :key="seg.id"
-            class="segment-item"
-            :class="{ selected: selectedIndices.has(i), merged: seg.originalTexts }"
-          >
-            <div class="segment-top">
-              <label class="seg-checkbox" @click.prevent="toggleSelect(i)">
-                <span class="checkbox-box" :class="{ checked: selectedIndices.has(i) }">
-                  <svg v-if="selectedIndices.has(i)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" width="12" height="12">
-                    <polyline points="20 6 9 17 4 12"/>
-                  </svg>
-                </span>
-              </label>
-              <span class="segment-index">{{ i + 1 }}</span>
-              <span class="segment-text">{{ seg.text }}</span>
-              <a-button
-                size="small"
-                :loading="seg.generating"
-                :disabled="!ttsKey || !getVoice(seg)"
-                @click="handleGenerateOne(i)"
-              >
-                合成
-              </a-button>
-              <a-button
-                v-if="seg.originalTexts"
-                size="small"
-                @click="unmerge(i)"
-                title="拆分"
-              >
-                拆分
-              </a-button>
+          <template v-for="item in renderList" :key="item.type === 'segment' ? segments[item.index].id : `group-${item.group.id}`">
+            <!-- Standalone segment -->
+            <div v-if="item.type === 'segment'" class="segment-item" :class="{ selected: selectedIndices.has(item.index) }">
+              <div class="segment-top">
+                <label class="seg-checkbox" @click.prevent="toggleSelect(item.index)">
+                  <span class="checkbox-box" :class="{ checked: selectedIndices.has(item.index) }">
+                    <svg v-if="selectedIndices.has(item.index)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" width="12" height="12">
+                      <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                  </span>
+                </label>
+                <span class="segment-index">{{ item.index + 1 }}</span>
+                <span class="segment-text">{{ segments[item.index].text }}</span>
+                <a-button
+                  size="small"
+                  :loading="segments[item.index].generating"
+                  :disabled="!ttsKey || !getVoice(segments[item.index])"
+                  @click="handleGenerateOne(item.index)"
+                >
+                  合成
+                </a-button>
+              </div>
+
+              <!-- Per-segment voice override -->
+              <div class="segment-voice">
+                <a-input
+                  v-model:value="segments[item.index].voiceDescription"
+                  :placeholder="defaultVoice ? `留空使用默认: ${defaultVoice.slice(0, 20)}...` : '音色描述'"
+                  size="small"
+                  class="voice-input"
+                />
+                <a-button
+                  size="small"
+                  :loading="segments[item.index].polishing"
+                  :disabled="!segments[item.index].voiceDescription.trim() || !llmKey"
+                  @click="handlePolishSegment(item.index)"
+                >
+                  润色
+                </a-button>
+              </div>
+
+              <!-- Polished result for segment -->
+              <div v-if="segments[item.index].polished" class="polish-inline">
+                <span class="polish-text">{{ segments[item.index].polished }}</span>
+                <a-space :size="4">
+                  <a-button size="small" type="primary" @click="segments[item.index].voiceDescription = segments[item.index].polished; segments[item.index].polished = ''">采纳</a-button>
+                  <a-button size="small" @click="segments[item.index].polished = ''">取消</a-button>
+                </a-space>
+              </div>
+
+              <!-- Audio player -->
+              <audio v-if="segments[item.index].audioUrl" :src="segments[item.index].audioUrl" controls class="segment-audio" />
             </div>
 
-            <!-- Per-segment voice override -->
-            <div class="segment-voice">
-              <a-input
-                v-model:value="seg.voiceDescription"
-                :placeholder="defaultVoice ? `留空使用默认: ${defaultVoice.slice(0, 20)}...` : '音色描述'"
-                size="small"
-                class="voice-input"
-              />
-              <a-button
-                size="small"
-                :loading="seg.polishing"
-                :disabled="!seg.voiceDescription.trim() || !llmKey"
-                @click="handlePolishSegment(i)"
+            <!-- Group of segments -->
+            <div v-else class="segment-group">
+              <div class="group-header">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                  <rect x="2" y="7" width="20" height="10" rx="2"/>
+                  <path d="M16 3v4M8 3v4"/>
+                </svg>
+                <span>组合语音 ({{ item.group.indices.size }} 段)</span>
+                <a-button size="small" @click="ungroup(item.group.id)">拆分</a-button>
+              </div>
+              <div
+                v-for="idx in [...item.group.indices].sort((a, b) => a - b)"
+                :key="segments[idx].id"
+                class="segment-item grouped"
               >
-                润色
-              </a-button>
+                <div class="segment-top">
+                  <span class="segment-index">{{ idx + 1 }}</span>
+                  <span class="segment-text">{{ segments[idx].text }}</span>
+                </div>
+              </div>
+              <div class="group-footer">
+                <a-button
+                  type="primary"
+                  :loading="item.group.generating"
+                  :disabled="!ttsKey || !defaultVoice.trim()"
+                  @click="handleSynthGroup(item.group.id)"
+                >
+                  合成一句话
+                </a-button>
+                <audio v-if="item.group.audioUrl" :src="item.group.audioUrl" controls class="group-audio" />
+              </div>
             </div>
-
-            <!-- Polished result for segment -->
-            <div v-if="seg.polished" class="polish-inline">
-              <span class="polish-text">{{ seg.polished }}</span>
-              <a-space :size="4">
-                <a-button size="small" type="primary" @click="seg.voiceDescription = seg.polished; seg.polished = ''">采纳</a-button>
-                <a-button size="small" @click="seg.polished = ''">取消</a-button>
-              </a-space>
-            </div>
-
-            <!-- Audio player -->
-            <audio v-if="seg.audioUrl" :src="seg.audioUrl" controls class="segment-audio" />
-          </div>
+          </template>
         </div>
       </div>
 
@@ -234,6 +257,10 @@ const segments = ref([])
 const selectedIndices = ref(new Set())
 let segmentIdCounter = 0
 
+// Groups: array of { id, indices: Set<number>, audioUrl: string|null, generating: boolean }
+const groups = ref([])
+let groupIdCounter = 0
+
 const allTexts = computed(() => textsStore.texts)
 
 onMounted(() => {
@@ -252,7 +279,6 @@ const makeSegment = (text) => ({
   generating: false,
   polishing: false,
   polished: '',
-  originalTexts: null,
 })
 
 const loadSegments = async (content) => {
@@ -260,6 +286,7 @@ const loadSegments = async (content) => {
     const { data } = await textsApi.generateSrt({ content, speed: 5, max_chars: 20 })
     segments.value = data.segments_list.map(text => makeSegment(text))
     selectedIndices.value = new Set()
+    groups.value = []
   } catch {
     message.error('分段失败')
   }
@@ -284,50 +311,91 @@ const toggleSelect = (i) => {
   selectedIndices.value = s
 }
 
-// Merge consecutive selected segments
-const mergeSelected = () => {
+// Check if a segment is in any group
+const isInGroup = (i) => {
+  return groups.value.some(g => g.indices.has(i))
+}
+
+// Check if selected segments can be grouped
+const canGroupSelected = computed(() => {
+  if (selectedIndices.value.size < 2) return false
   const sorted = [...selectedIndices.value].sort((a, b) => a - b)
+  // Check if any selected indices are already in a group
+  for (const idx of sorted) {
+    if (isInGroup(idx)) return false
+  }
   // Check consecutive
   for (let k = 1; k < sorted.length; k++) {
-    if (sorted[k] !== sorted[k - 1] + 1) {
-      message.warning('只能合并相邻的片段')
-      return
+    if (sorted[k] !== sorted[k - 1] + 1) return false
+  }
+  return true
+})
+
+// Group selected segments
+const handleGroupSelected = () => {
+  const sorted = [...selectedIndices.value].sort((a, b) => a - b)
+  const group = {
+    id: ++groupIdCounter,
+    indices: new Set(sorted),
+    audioUrl: null,
+    generating: false,
+  }
+  groups.value = [...groups.value, group]
+  selectedIndices.value = new Set()
+  message.success(`已组合 ${sorted.length} 段`)
+}
+
+// Ungroup a group
+const ungroup = (groupId) => {
+  const group = groups.value.find(g => g.id === groupId)
+  if (group && group.audioUrl) URL.revokeObjectURL(group.audioUrl)
+  groups.value = groups.value.filter(g => g.id !== groupId)
+  message.success('已拆分')
+}
+
+// Synthesize a group as one continuous sentence
+const handleSynthGroup = async (groupId) => {
+  const group = groups.value.find(g => g.id === groupId)
+  if (!group) return
+  const sorted = [...group.indices].sort((a, b) => a - b)
+  const combinedText = sorted.map(i => segments.value[i].text).join('')
+  const voice = defaultVoice.value.trim()
+  group.generating = true
+  try {
+    const { data } = await ttsApi.synthesize({
+      api_key: ttsKey.value,
+      voice_description: voice,
+      text: combinedText,
+    })
+    const binary = atob(data.audio_base64)
+    const bytes = new Uint8Array(binary.length)
+    for (let j = 0; j < binary.length; j++) bytes[j] = binary.charCodeAt(j)
+    if (group.audioUrl) URL.revokeObjectURL(group.audioUrl)
+    group.audioUrl = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }))
+    message.success(`已合成 ${sorted.length} 段为一句话`)
+  } catch (e) {
+    message.error(e.response?.data?.error || '合成失败')
+  } finally {
+    group.generating = false
+  }
+}
+
+// Render list: computed property to determine rendering order
+const renderList = computed(() => {
+  const items = []
+  const visited = new Set()
+  for (let i = 0; i < segments.value.length; i++) {
+    if (visited.has(i)) continue
+    const group = groups.value.find(g => g.indices.has(i))
+    if (group) {
+      items.push({ type: 'group', group })
+      group.indices.forEach(idx => visited.add(idx))
+    } else {
+      items.push({ type: 'segment', index: i })
     }
   }
-  const first = sorted[0]
-  const last = sorted[sorted.length - 1]
-  const toMerge = segments.value.slice(first, last + 1)
-  const mergedText = toMerge.map(s => s.text).join('')
-  const mergedSeg = makeSegment(mergedText)
-  mergedSeg.originalTexts = toMerge.map(s => ({
-    text: s.text,
-    voiceDescription: s.voiceDescription,
-  }))
-  // Use first segment's voice if set
-  mergedSeg.voiceDescription = toMerge[0].voiceDescription || ''
-
-  const newSegments = [...segments.value]
-  newSegments.splice(first, last - first + 1, mergedSeg)
-  segments.value = newSegments
-  selectedIndices.value = new Set()
-  message.success(`已合并 ${toMerge.length} 段`)
-}
-
-// Unmerge a merged segment
-const unmerge = (i) => {
-  const seg = segments.value[i]
-  if (!seg.originalTexts) return
-  const restored = seg.originalTexts.map(orig => {
-    const s = makeSegment(orig.text)
-    s.voiceDescription = orig.voiceDescription
-    return s
-  })
-  const newSegments = [...segments.value]
-  newSegments.splice(i, 1, ...restored)
-  segments.value = newSegments
-  selectedIndices.value = new Set()
-  message.success(`已拆分为 ${restored.length} 段`)
-}
+  return items
+})
 
 // Polish default voice
 const handlePolishDefault = async () => {
@@ -422,6 +490,10 @@ const clearAllAudio = () => {
   segments.value.forEach(seg => {
     if (seg.audioUrl) URL.revokeObjectURL(seg.audioUrl)
     seg.audioUrl = null
+  })
+  groups.value.forEach(g => {
+    if (g.audioUrl) URL.revokeObjectURL(g.audioUrl)
+    g.audioUrl = null
   })
 }
 </script>
@@ -566,8 +638,15 @@ const clearAllAudio = () => {
   box-shadow: var(--shadow-focus);
 }
 
-.segment-item.merged {
-  border-left: 3px solid var(--text-primary);
+.segment-item.grouped {
+  border-radius: 0;
+  border: none;
+  border-bottom: 1px solid var(--surface-border);
+  background: transparent;
+}
+
+.segment-item.grouped:last-of-type {
+  border-bottom: none;
 }
 
 .segment-top {
@@ -637,6 +716,50 @@ const clearAllAudio = () => {
   width: 100%;
   height: 36px;
   margin-top: 6px;
+  border-radius: var(--radius-sm);
+  outline: none;
+}
+
+/* Group */
+.segment-group {
+  background: var(--paper-soft);
+  border: 2px solid var(--text-primary);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+}
+
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--surface-active);
+  border-bottom: 1px solid var(--surface-border);
+  font-size: 13px;
+  font-weight: 560;
+  color: var(--text-primary);
+}
+
+.group-header svg {
+  flex-shrink: 0;
+  color: var(--text-primary);
+}
+
+.group-header span {
+  flex: 1;
+}
+
+.group-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border-top: 1px solid var(--surface-border);
+}
+
+.group-audio {
+  flex: 1;
+  height: 36px;
   border-radius: var(--radius-sm);
   outline: none;
 }
