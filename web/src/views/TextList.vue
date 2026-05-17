@@ -1,25 +1,31 @@
 <template>
   <div class="text-workspace">
     <a-layout class="workspace-layout">
-      <a-layout-sider
-        :width="sidebarCollapsed ? 0 : 260"
-        :collapsedWidth="0"
-        :collapsed="sidebarCollapsed"
-        class="sidebar"
-        :class="{ collapsed: sidebarCollapsed }"
+      <div
+        class="sidebar-wrapper"
+        :class="{ collapsed: sidebarCollapsed, hovered: sidebarHovered }"
+        @mouseenter="sidebarHovered = true"
+        @mouseleave="sidebarHovered = false"
       >
-        <FolderTree
-          :selectedFolderId="selectedFolderId"
-          @select="handleFolderSelect"
-          @moveText="fetchTexts"
-        />
-      </a-layout-sider>
+        <a-layout-sider
+          :width="sidebarCollapsed ? 0 : 260"
+          :collapsedWidth="0"
+          :collapsed="sidebarCollapsed"
+          class="sidebar"
+        >
+          <FolderTree
+            :selectedFolderId="selectedFolderId"
+            @select="handleFolderSelect"
+            @moveText="fetchTexts"
+          />
+        </a-layout-sider>
 
-      <!-- Sidebar Toggle Button -->
-      <div class="sidebar-toggle" @click="sidebarCollapsed = !sidebarCollapsed">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: sidebarCollapsed }">
-          <polyline points="15 18 9 12 15 6"/>
-        </svg>
+        <!-- Sidebar Toggle Button -->
+        <div class="sidebar-toggle" @click="sidebarCollapsed = !sidebarCollapsed">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: sidebarCollapsed }">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </div>
       </div>
 
       <a-layout-content class="workspace-content" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
@@ -219,6 +225,7 @@ const textsStore = useTextsStore()
 const foldersStore = useFoldersStore()
 
 const sidebarCollapsed = ref(false)
+const sidebarHovered = ref(false)
 const selectedFolderId = ref(null)
 const selectedTextId = ref(null)
 const searchQuery = ref('')
@@ -757,27 +764,40 @@ watch(selectedText, fetchSrtPreview)
   }
 }
 
+/* Sidebar Wrapper */
+.sidebar-wrapper {
+  display: flex;
+  position: relative;
+  transition: all var(--transition-normal);
+}
+
 /* Sidebar Toggle Button */
 .sidebar-toggle {
-  width: 20px;
+  width: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  background: var(--surface);
-  border-top: 1px solid var(--surface-border);
-  border-bottom: 1px solid var(--surface-border);
+  background: transparent;
+  border-left: 1px solid var(--surface-border);
   transition: all var(--transition-fast);
   flex-shrink: 0;
+  opacity: 0;
+}
+
+.sidebar-wrapper:hover .sidebar-toggle,
+.sidebar-wrapper.hovered .sidebar-toggle {
+  opacity: 1;
+  background: var(--surface);
 }
 
 .sidebar-toggle:hover {
-  background: var(--surface-hover);
+  background: var(--surface-hover) !important;
 }
 
 .sidebar-toggle svg {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   color: var(--text-muted);
   transition: transform var(--transition-fast);
 }
@@ -787,10 +807,33 @@ watch(selectedText, fetchSrtPreview)
 }
 
 /* Sidebar collapsed state */
-.sidebar.collapsed {
+.sidebar-wrapper.collapsed {
+  width: 0;
+  overflow: visible;
+}
+
+.sidebar-wrapper.collapsed .sidebar {
   overflow: hidden;
   border: none;
   padding: 0;
+}
+
+.sidebar-wrapper.collapsed .sidebar-toggle {
+  position: absolute;
+  right: -16px;
+  top: 0;
+  height: 100%;
+  width: 16px;
+  background: var(--surface);
+  border: 1px solid var(--surface-border);
+  border-left: none;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  opacity: 0;
+  z-index: 10;
+}
+
+.sidebar-wrapper.collapsed:hover .sidebar-toggle {
+  opacity: 1;
 }
 
 /* Content expands when sidebar collapsed */
