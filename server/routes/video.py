@@ -1,6 +1,5 @@
 import os
 import re
-import subprocess
 import tempfile
 from flask import Blueprint, request, jsonify, send_file
 
@@ -59,45 +58,59 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
     return ass_content
 
 
-def check_ffmpeg():
-    """检查 ffmpeg 是否可用。"""
-    try:
-        subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
-        return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return False
+def generate_video(image_path, audio_path, timeline, output_path, width, height):
+    """使用 moviepy 合成视频。"""
+    from moviepy.editor import ImageClip, AudioFileClip, TextClip, CompositeVideoClip, ColorClip
 
+    # 加载音频获取时长
+    audio = AudioFileClip(audio_path)
+    duration = audio.duration
 
-def generate_video(image_path, audio_path, ass_content, output_path, width, height):
-    """使用 ffmpeg 合成视频。"""
-    # 写入 ASS 字幕文件
-    ass_path = output_path.replace('.mp4', '.ass')
-    with open(ass_path, 'w', encoding='utf-8') as f:
-        f.write(ass_content)
+    # 创建背景图片 clip
+    image_clip = ImageClip(image_path).set_duration(duration).resize((width, height))
 
-    # 构建 ffmpeg 命令
-    cmd = [
-        'ffmpeg', '-y',
-        '-loop', '1',
-        '-i', image_path,
-        '-i', audio_path,
-        '-vf', f'ass={ass_path}',
-        '-c:v', 'libx264',
-        '-tune', 'stillimage',
-        '-c:a', 'aac',
-        '-b:a', '192k',
-        '-pix_fmt', 'yuv420p',
-        '-shortest',
+    # 创建字幕 clips
+    subtitle_clips = []
+    font_size = int(height * 0.03)
+    margin_bottom = int(height * 0.1)
+
+    for item in timeline:
+        text = item['text']
+        start = item['start']
+        end = item['end']
+
+        # 创建字幕文本 clip
+        txt_clip = TextClip(
+            text,
+            fontsize=font_size,
+            color='white',
+            font='Microsoft-YaHei',
+            stroke_color='black',
+            stroke_width=2,
+        )
+        txt_clip = txt_clip.set_position(('center', height - margin_bottom - txt_clip.h))
+        txt_clip = txt_clip.set_start(start).set_end(end)
+        subtitle_clips.append(txt_clip)
+
+    # 合成视频
+    final_clip = CompositeVideoClip([image_clip] + subtitle_clips)
+    final_clip = final_clip.set_audio(audio)
+
+    # 写入视频文件
+    final_clip.write_videofile(
         output_path,
-    ]
+        fps=24,
+        codec='libx264',
+        audio_codec='aac',
+        logger=None,
+    )
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise RuntimeError(f'ffmpeg 错误: {result.stderr}')
-
-    # 清理临时 ASS 文件
-    if os.path.exists(ass_path):
-        os.remove(ass_path)
+    # 清理资源
+    audio.close()
+    image_clip.close()
+    for clip in subtitle_clips:
+        clip.close()
+    final_clip.close()
 
     return output_path
 
@@ -137,10 +150,6 @@ def generate():
     text = Text.query.get(text_id)
     if not text:
         return jsonify({'error': '文本不存在'}), 404
-
-    # 检查 ffmpeg
-    if not check_ffmpeg():
-        return jsonify({'error': '服务器未安装 ffmpeg'}), 500
 
     try:
         # 创建临时目录
@@ -184,12 +193,9 @@ def generate():
             with open(audio_path, 'wb') as f:
                 f.write(full_audio)
 
-            # 生成 ASS 字幕
-            ass_content = generate_ass_subtitle(timeline, width, height)
-
             # 生成视频
             output_path = os.path.join(tmpdir, 'output.mp4')
-            generate_video(image_path, audio_path, ass_content, output_path, width, height)
+            generate_video(image_path, audio_path, timeline, output_path, width, height)
 
             # 返回视频文件
             return send_file(
