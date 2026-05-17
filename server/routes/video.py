@@ -60,14 +60,14 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
 
 def generate_video(image_path, audio_path, timeline, output_path, width, height):
     """使用 moviepy 合成视频。"""
-    from moviepy.editor import ImageClip, AudioFileClip, TextClip, CompositeVideoClip, ColorClip
+    from moviepy import ImageClip, AudioFileClip, TextClip, CompositeVideoClip
 
     # 加载音频获取时长
     audio = AudioFileClip(audio_path)
     duration = audio.duration
 
     # 创建背景图片 clip
-    image_clip = ImageClip(image_path).set_duration(duration).resize((width, height))
+    image_clip = ImageClip(image_path).with_duration(duration).resized((width, height))
 
     # 创建字幕 clips
     subtitle_clips = []
@@ -81,20 +81,20 @@ def generate_video(image_path, audio_path, timeline, output_path, width, height)
 
         # 创建字幕文本 clip
         txt_clip = TextClip(
-            text,
-            fontsize=font_size,
+            text=text,
+            font_size=font_size,
             color='white',
-            font='Microsoft-YaHei',
+            font='/System/Library/Fonts/PingFang.ttc',
             stroke_color='black',
             stroke_width=2,
         )
-        txt_clip = txt_clip.set_position(('center', height - margin_bottom - txt_clip.h))
-        txt_clip = txt_clip.set_start(start).set_end(end)
+        txt_clip = txt_clip.with_position(('center', height - margin_bottom - txt_clip.h))
+        txt_clip = txt_clip.with_start(start).with_end(end)
         subtitle_clips.append(txt_clip)
 
     # 合成视频
     final_clip = CompositeVideoClip([image_clip] + subtitle_clips)
-    final_clip = final_clip.set_audio(audio)
+    final_clip = final_clip.with_audio(audio)
 
     # 写入视频文件
     final_clip.write_videofile(
