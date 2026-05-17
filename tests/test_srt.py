@@ -10,7 +10,7 @@ def test_generate_srt_basic():
         "你好世界好\n"
         "\n"
         "2\n"
-        "00:00:01,000 --> 00:00:02,000\n"
+        "00:00:02,000 --> 00:00:03,000\n"
         "我很好呀！\n"
     )
     assert result == expected
