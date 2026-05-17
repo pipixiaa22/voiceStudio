@@ -42,10 +42,34 @@ export const ttsApi = {
 }
 
 export const videoApi = {
-  generate: (formData) => api.post('/video/generate', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-    responseType: 'blob',
-  }),
+  generate: async (formData) => {
+    try {
+      const response = await api.post('/video/generate', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        responseType: 'blob',
+      })
+      return response
+    } catch (error) {
+      // 如果是 blob 响应中的 JSON 错误
+      if (error.response && error.response.data instanceof Blob) {
+        const reader = new FileReader()
+        return new Promise((resolve, reject) => {
+          reader.onload = () => {
+            try {
+              const errorData = JSON.parse(reader.result)
+              error.response.data = errorData
+              reject(error)
+            } catch {
+              reject(error)
+            }
+          }
+          reader.onerror = () => reject(error)
+          reader.readAsText(error.response.data)
+        })
+      }
+      throw error
+    }
+  },
 }
 
 export default api

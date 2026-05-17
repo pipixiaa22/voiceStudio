@@ -97,6 +97,16 @@ const handleGenerate = async () => {
     return
   }
 
+  if (!imageFile.value) {
+    message.error('请上传背景图片')
+    return
+  }
+
+  if (!voiceDescription.value) {
+    message.error('请填写音色描述')
+    return
+  }
+
   generating.value = true
   try {
     const formData = new FormData()
@@ -107,6 +117,17 @@ const handleGenerate = async () => {
     formData.append('voice_description', voiceDescription.value)
 
     const response = await videoApi.generate(formData)
+
+    // 检查响应是否是 JSON 错误
+    if (response.data.type === 'application/json') {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const errorData = JSON.parse(reader.result)
+        message.error(errorData.error || '视频生成失败')
+      }
+      reader.readAsText(response.data)
+      return
+    }
 
     // 下载视频
     const url = window.URL.createObjectURL(new Blob([response.data]))
@@ -119,7 +140,33 @@ const handleGenerate = async () => {
     message.success('视频生成成功')
     emit('update:open', false)
   } catch (error) {
-    message.error('视频生成失败')
+    // 提取错误信息
+    let errorMessage = '视频生成失败'
+    if (error.response && error.response.data) {
+      try {
+        // 尝试从 blob 响应中解析 JSON
+        if (error.response.data instanceof Blob) {
+          const reader = new FileReader()
+          reader.onload = () => {
+            try {
+              const errorData = JSON.parse(reader.result)
+              message.error(errorData.error || errorMessage)
+            } catch {
+              message.error(errorMessage)
+            }
+          }
+          reader.readAsText(error.response.data)
+          return
+        }
+        // 直接是 JSON 响应
+        if (error.response.data.error) {
+          errorMessage = error.response.data.error
+        }
+      } catch (e) {
+        console.error('解析错误信息失败:', e)
+      }
+    }
+    message.error(errorMessage)
     console.error(error)
   } finally {
     generating.value = false

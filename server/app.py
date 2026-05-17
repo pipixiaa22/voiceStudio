@@ -39,7 +39,7 @@ def create_app(test_config=None):
 
 def main():
     app = create_app()
-    app.run(debug=False, port=5002)
+    app.run(debug=True, port=5002)
 
 
 if __name__ == '__main__':

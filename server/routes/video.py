@@ -206,4 +206,8 @@ def generate():
             )
 
     except Exception as e:
-        return jsonify({'error': f'生成视频失败: {str(e)}'}), 500
+        import traceback
+        error_traceback = traceback.format_exc()
+        print(f"视频生成错误: {e}")
+        print(f"错误详情:\n{error_traceback}")
+        return jsonify({'error': f'生成视频失败: {str(e)}', 'traceback': error_traceback}), 500
