@@ -59,3 +59,17 @@ def test_format_ass_timestamp():
     assert _format_ass_timestamp(0) == '0:00:00.00'
     assert _format_ass_timestamp(61.5) == '0:01:01.50'
     assert _format_ass_timestamp(3661.123) == '1:01:01.12'
+
+
+def test_video_generate_missing_params(client):
+    """测试缺少参数"""
+    response = client.post('/api/video/generate')
+    assert response.status_code == 400
+
+
+def test_video_generate_invalid_ratio(client):
+    """测试无效宽高比"""
+    response = client.post('/api/video/generate', data={
+        'aspect_ratio': '4:3',
+    })
+    assert response.status_code == 400

@@ -23,10 +23,12 @@ def create_app(test_config=None):
         from server.routes.folders import folders_bp
         from server.routes.tags import tags_bp
         from server.routes.tts import tts_bp
+        from server.routes.video import video_bp
         app.register_blueprint(texts_bp)
         app.register_blueprint(folders_bp)
         app.register_blueprint(tags_bp)
         app.register_blueprint(tts_bp)
+        app.register_blueprint(video_bp)
 
     @app.route('/')
     def index():
