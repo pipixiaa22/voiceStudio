@@ -57,3 +57,46 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         ass_content += f'Dialogue: 0,{start},{end},Default,,0,0,0,,{text}\n'
 
     return ass_content
+
+
+def check_ffmpeg():
+    """检查 ffmpeg 是否可用。"""
+    try:
+        subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
+
+
+def generate_video(image_path, audio_path, ass_content, output_path, width, height):
+    """使用 ffmpeg 合成视频。"""
+    # 写入 ASS 字幕文件
+    ass_path = output_path.replace('.mp4', '.ass')
+    with open(ass_path, 'w', encoding='utf-8') as f:
+        f.write(ass_content)
+
+    # 构建 ffmpeg 命令
+    cmd = [
+        'ffmpeg', '-y',
+        '-loop', '1',
+        '-i', image_path,
+        '-i', audio_path,
+        '-vf', f'ass={ass_path}',
+        '-c:v', 'libx264',
+        '-tune', 'stillimage',
+        '-c:a', 'aac',
+        '-b:a', '192k',
+        '-pix_fmt', 'yuv420p',
+        '-shortest',
+        output_path,
+    ]
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f'ffmpeg 错误: {result.stderr}')
+
+    # 清理临时 ASS 文件
+    if os.path.exists(ass_path):
+        os.remove(ass_path)
+
+    return output_path
