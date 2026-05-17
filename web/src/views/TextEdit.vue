@@ -25,6 +25,15 @@
           </template>
           导出 SRT
         </a-button>
+        <a-button v-if="textId" @click="videoModalVisible = true" class="export-btn">
+          <template #icon>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="23 7 16 12 23 17 23 7"/>
+              <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+            </svg>
+          </template>
+          生成视频
+        </a-button>
         <a-button type="primary" :loading="saving" @click="handleSave" class="save-btn">
           <template #icon>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -105,6 +114,12 @@
       :content="content"
       :title="title"
     />
+
+    <VideoGenerateModal
+      v-model:open="videoModalVisible"
+      :textId="textId"
+      :textTitle="title"
+    />
   </div>
 </template>
 
@@ -117,6 +132,7 @@ import { useFoldersStore } from '../stores/folders'
 import TagSelector from '../components/TagSelector.vue'
 import SrtLivePreview from '../components/SrtLivePreview.vue'
 import SrtExportModal from '../components/SrtExportModal.vue'
+import VideoGenerateModal from '../components/VideoGenerateModal.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -130,6 +146,7 @@ const folderId = ref(null)
 const selectedTags = ref([])
 const saving = ref(false)
 const exportModalVisible = ref(false)
+const videoModalVisible = ref(false)
 
 const folders = computed(() => foldersStore.folders)
 
