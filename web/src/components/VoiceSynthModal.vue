@@ -125,6 +125,14 @@
             >
               全部生成 (ZIP)
             </a-button>
+            <a-button
+              type="primary"
+              :loading="syncPackaging"
+              :disabled="!ttsKey"
+              @click="handleSyncPackage"
+            >
+              生成同步包
+            </a-button>
             <a-button size="small" @click="clearAllAudio">清除音频</a-button>
           </a-space>
         </div>
@@ -253,8 +261,10 @@ const defaultVoice = ref('')
 const polishedDefault = ref('')
 const polishingDefault = ref(false)
 const batchGenerating = ref(false)
+const syncPackaging = ref(false)
 const segments = ref([])
 const selectedIndices = ref(new Set())
+const sourceTitle = ref('语音合成')
 let segmentIdCounter = 0
 
 // Groups: array of { id, indices: Set<number>, audioUrl: string|null, generating: boolean }
@@ -294,11 +304,17 @@ const loadSegments = async (content) => {
 
 const handleTextSelect = async (id) => {
   const text = await textsStore.fetchText(id)
-  if (text) loadSegments(text.content)
+  if (text) {
+    sourceTitle.value = text.title || '语音合成'
+    loadSegments(text.content)
+  }
 }
 
 const handlePasteLoad = () => {
-  if (pastedText.value.trim()) loadSegments(pastedText.value)
+  if (pastedText.value.trim()) {
+    sourceTitle.value = '手动粘贴'
+    loadSegments(pastedText.value)
+  }
 }
 
 const getVoice = (seg) => seg.voiceDescription.trim() || defaultVoice.value.trim()
@@ -483,6 +499,34 @@ const handleBatchGenerate = async () => {
     message.error('批量合成失败')
   } finally {
     batchGenerating.value = false
+  }
+}
+
+// Generate synchronized package with full audio, timed SRT, and per-segment wav files
+const handleSyncPackage = async () => {
+  syncPackaging.value = true
+  try {
+    const response = await ttsApi.syncPackage({
+      api_key: ttsKey.value,
+      title: sourceTitle.value,
+      default_voice_description: defaultVoice.value,
+      gap: 0.3,
+      segments: segments.value.map(seg => ({
+        text: seg.text,
+        voice_description: seg.voiceDescription || '',
+      })),
+    })
+    const url = URL.createObjectURL(new Blob([response.data], { type: 'application/zip' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${sourceTitle.value || '语音合成'}_同步包.zip`
+    link.click()
+    URL.revokeObjectURL(url)
+    message.success('同步包生成完成')
+  } catch (e) {
+    message.error(e.response?.data?.error || '同步包生成失败')
+  } finally {
+    syncPackaging.value = false
   }
 }
 

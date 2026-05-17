@@ -37,6 +37,7 @@ export const tagsApi = {
 export const ttsApi = {
   synthesize: (data) => api.post('/tts/synthesize', data),
   batchSynthesize: (data) => api.post('/tts/batch-synthesize', data, { responseType: 'blob' }),
+  syncPackage: (data) => api.post('/tts/sync-package', data, { responseType: 'blob' }),
   polish: (data) => api.post('/tts/polish', data),
 }
 
