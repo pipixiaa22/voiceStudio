@@ -41,4 +41,11 @@ export const ttsApi = {
   polish: (data) => api.post('/tts/polish', data),
 }
 
+export const videoApi = {
+  generate: (formData) => api.post('/video/generate', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    responseType: 'blob',
+  }),
+}
+
 export default api
