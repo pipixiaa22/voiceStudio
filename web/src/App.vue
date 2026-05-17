@@ -44,6 +44,14 @@
             </template>
             <span>导入</span>
           </a-menu-item>
+          <a-menu-item key="/quick-generate">
+            <template #icon>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+              </svg>
+            </template>
+            <span>快速生成</span>
+          </a-menu-item>
         </a-menu>
       </div>
     </a-layout-header>
