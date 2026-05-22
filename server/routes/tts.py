@@ -313,3 +313,104 @@ def polish():
         return jsonify({'error': 'MiMo API 返回数据格式异常'}), 502
 
     return jsonify({'polished': polished})
+
+
+@tts_bp.route('/api/tts/sync-package-v2', methods=['POST'])
+def sync_package_v2():
+    """智能分块语音合成。"""
+    from server.services.tts_provider import TTSProvider
+    from server.services.tts_planner import plan_speech_chunks
+    from server.services.audio_package import read_wav_info, concat_wavs, build_srt, build_zip_package
+    from server.services.subtitle_timeline import build_subtitle_timeline
+    from splitter import split_text
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': '请求数据不能为空'}), 400
+
+    api_key = data.get('api_key')
+    title = _safe_filename(data.get('title', '语音合成'))
+    content = data.get('content', '')
+    voice_description = data.get('voice_description', '')
+    subtitle_options = data.get('subtitle_options', {})
+    synthesis_options = data.get('synthesis_options', {})
+
+    if not api_key:
+        return jsonify({'error': '请填写 API Key'}), 400
+    if not content:
+        return jsonify({'error': '请填写文本内容'}), 400
+    if not voice_description:
+        return jsonify({'error': '请填写音色描述'}), 400
+
+    max_chars = subtitle_options.get('max_chars', 20)
+    gap = subtitle_options.get('gap', 0.3)
+    chunk_max_chars = synthesis_options.get('chunk_max_chars', 200)
+
+    # 1. 分割字幕段
+    subtitle_segments = split_text(content, max_chars=max_chars)
+    if not subtitle_segments:
+        return jsonify({'error': '没有有效的字幕段'}), 400
+
+    # 2. 规划语音块
+    chunks = plan_speech_chunks(subtitle_segments, max_chars=chunk_max_chars)
+
+    # 3. 逐块合成
+    provider = TTSProvider(api_key)
+    wav_infos = []
+    chunk_files = []
+
+    for chunk in chunks:
+        try:
+            audio_b64 = provider.synthesize(voice_description, chunk.text)
+            audio_bytes = base64.b64decode(audio_b64)
+            wav_info = read_wav_info(audio_bytes)
+            wav_infos.append(wav_info)
+            chunk_files.append((f'chunks/{chunk.index:03d}.wav', audio_bytes))
+        except Exception as e:
+            return jsonify({'error': f'语音块 {chunk.index} 合成失败: {str(e)}'}), 502
+
+    # 4. 拼接完整音频
+    full_audio = concat_wavs(wav_infos, gap=gap)
+
+    # 5. 生成字幕时间轴
+    chunk_durations = [info['frames'] / info['framerate'] for info in wav_infos]
+    subtitle_timeline = build_subtitle_timeline(chunks, chunk_durations, gap=gap, subtitle_segments=subtitle_segments)
+
+    # 6. 生成 SRT
+    srt_content = build_srt(subtitle_timeline)
+
+    # 7. 构建 manifest
+    total_duration = subtitle_timeline[-1]['end'] if subtitle_timeline else 0
+    manifest = {
+        'title': title,
+        'provider': 'mimo',
+        'model': 'mimo-v2.5-tts-voicedesign',
+        'subtitle_options': subtitle_options,
+        'synthesis_options': synthesis_options,
+        'chunks': [
+            {
+                'index': chunk.index,
+                'filename': f'chunks/{chunk.index:03d}.wav',
+                'text': chunk.text,
+                'subtitle_indices': chunk.subtitle_indices,
+            }
+            for chunk in chunks
+        ],
+        'subtitles': subtitle_timeline,
+        'total_duration': round(total_duration, 3),
+    }
+
+    # 8. 打包 ZIP
+    zip_bytes = build_zip_package(title, full_audio, srt_content, manifest, chunk_files)
+
+    import io
+    download_name = f'{title}_同步包.zip'
+    encoded_filename = quote(download_name)
+    response = send_file(
+        io.BytesIO(zip_bytes),
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name=download_name,
+    )
+    response.headers['Content-Disposition'] = f"attachment; filename*=UTF-8''{encoded_filename}"
+    return response
