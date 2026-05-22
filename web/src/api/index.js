@@ -42,6 +42,15 @@ export const ttsApi = {
   polish: (data) => api.post('/tts/polish', data),
 }
 
+export const voiceProfilesApi = {
+  list: (params) => api.get('/voice-profiles', { params }),
+  get: (id) => api.get(`/voice-profiles/${id}`),
+  create: (data) => api.post('/voice-profiles', data),
+  update: (id, data) => api.put(`/voice-profiles/${id}`, data),
+  delete: (id) => api.delete(`/voice-profiles/${id}`),
+  audition: (id, data) => api.post(`/voice-profiles/${id}/audition`, data),
+}
+
 export const videoApi = {
   generate: async (formData) => {
     try {

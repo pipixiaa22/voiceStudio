@@ -91,8 +91,16 @@
       <!-- Step 2: Voice Profile -->
       <div v-if="activeStep === 2" class="step-content">
         <div class="field">
+          <label class="field-label">选择音色档案</label>
+          <VoiceProfileSelector
+            v-model="selectedProfile"
+            @audition="handleProfileAudition"
+          />
+        </div>
+
+        <div v-if="selectedProfile" class="field">
           <div class="field-header">
-            <label class="field-label">音色档案</label>
+            <label class="field-label">音色描述</label>
             <a-space :size="8">
               <a-button
                 size="small"
@@ -111,7 +119,7 @@
           </div>
           <a-textarea
             v-model:value="voiceProfile.description"
-            placeholder="例如：一位年轻女性，声音温柔甜美，语速缓慢，带有治愈感"
+            placeholder="音色描述..."
             :autoSize="{ minRows: 3, maxRows: 5 }"
           />
           <div v-if="polishedText" class="polish-inline">
@@ -123,7 +131,7 @@
           </div>
         </div>
 
-        <div class="field">
+        <div v-if="selectedProfile" class="field">
           <label class="field-label">负向约束（可选）</label>
           <a-textarea
             v-model:value="voiceProfile.negativePrompt"
@@ -136,7 +144,7 @@
           <a-button @click="activeStep = 1">上一步</a-button>
           <a-button
             type="primary"
-            :disabled="!voiceProfile.description.trim()"
+            :disabled="!selectedProfile || !voiceProfile.description.trim()"
             @click="activeStep = 3"
           >
             下一步：试听确认
@@ -263,6 +271,7 @@ import { message } from 'ant-design-vue'
 import { textsApi, ttsApi } from '../api'
 import { useTextsStore } from '../stores/texts'
 import { useSettings } from '../stores/settings'
+import VoiceProfileSelector from './VoiceProfileSelector.vue'
 
 const props = defineProps({
   open: Boolean,
@@ -286,6 +295,7 @@ const subtitleSegments = ref([])
 const speechChunks = ref([])
 
 // Step 2: Voice Profile
+const selectedProfile = ref(null)
 const voiceProfile = ref({
   description: '',
   negativePrompt: '',
@@ -318,6 +328,20 @@ const canGenerate = computed(() => {
     !generation.value.loading
 })
 
+// Watch for profile selection changes
+watch(selectedProfile, (profile) => {
+  if (profile) {
+    voiceProfile.value.description = profile.canonical_prompt || profile.raw_description
+    voiceProfile.value.negativePrompt = profile.negative_prompt || ''
+    // Reset audition when profile changes
+    audition.value.confirmed = false
+    if (audition.value.audioUrl) {
+      URL.revokeObjectURL(audition.value.audioUrl)
+      audition.value.audioUrl = null
+    }
+  }
+})
+
 onMounted(() => {
   if (!textsStore.texts.length) textsStore.fetchTexts()
 })
@@ -331,6 +355,8 @@ watch(
       sourceContent.value = ''
       subtitleSegments.value = []
       speechChunks.value = []
+      selectedProfile.value = null
+      voiceProfile.value = { description: '', negativePrompt: '', confirmed: false }
       audition.value = { generating: false, audioUrl: null, confirmed: false }
       return
     }
@@ -405,6 +431,28 @@ const handlePolish = async () => {
     message.error(e.response?.data?.error || '优化失败')
   } finally {
     polishing.value = false
+  }
+}
+
+const handleProfileAudition = async (profile) => {
+  audition.value.generating = true
+  audition.value.confirmed = false
+  try {
+    const { data } = await ttsApi.synthesize({
+      api_key: ttsKey.value,
+      voice_description: profile.canonical_prompt || profile.raw_description,
+      text: auditionText,
+    })
+    const binary = atob(data.audio_base64)
+    const bytes = new Uint8Array(binary.length)
+    for (let j = 0; j < binary.length; j++) bytes[j] = binary.charCodeAt(j)
+    if (audition.value.audioUrl) URL.revokeObjectURL(audition.value.audioUrl)
+    audition.value.audioUrl = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }))
+    message.success('试听音频已生成')
+  } catch (e) {
+    message.error(e.response?.data?.error || '试听生成失败')
+  } finally {
+    audition.value.generating = false
   }
 }
 
