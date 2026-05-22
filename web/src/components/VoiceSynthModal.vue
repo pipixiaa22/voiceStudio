@@ -4,11 +4,20 @@
     @update:open="$emit('update:open', $event)"
     title="语音合成"
     :footer="null"
-    width="800px"
+    width="900px"
+    :bodyStyle="{ padding: '24px', maxHeight: 'calc(100vh - 160px)', overflowY: 'auto' }"
   >
     <div class="voice-synth">
-      <!-- Source Selection -->
-      <div class="source-section">
+      <!-- Step Indicator -->
+      <a-steps :current="activeStep" size="small" class="steps">
+        <a-step title="选择文本" />
+        <a-step title="音色档案" />
+        <a-step title="试听确认" />
+        <a-step title="生成" />
+      </a-steps>
+
+      <!-- Step 1: Source Selection -->
+      <div v-if="activeStep === 1" class="step-content">
         <div class="source-tabs">
           <button
             class="source-tab"
@@ -53,189 +62,196 @@
           <a-textarea
             v-model:value="pastedText"
             placeholder="粘贴中文文字..."
-            :autoSize="{ minRows: 3, maxRows: 6 }"
+            :autoSize="{ minRows: 4, maxRows: 8 }"
           />
           <a-button
-            size="small"
+            type="primary"
             :disabled="!pastedText.trim()"
             @click="handlePasteLoad"
             class="load-btn"
           >
-            加载并分段
+            加载
+          </a-button>
+        </div>
+
+        <!-- Summary after loading -->
+        <div v-if="sourceContent" class="source-summary">
+          <div class="summary-title">{{ sourceTitle }}</div>
+          <div class="summary-stats">
+            <span>{{ sourceContent.length }} 字</span>
+            <span>{{ subtitleSegments.length }} 条字幕段</span>
+            <span>{{ speechChunks.length }} 个语音块</span>
+          </div>
+          <a-button type="primary" @click="activeStep = 2">
+            下一步：设定音色
           </a-button>
         </div>
       </div>
 
-      <div v-if="segments.length" class="ink-divider"></div>
+      <!-- Step 2: Voice Profile -->
+      <div v-if="activeStep === 2" class="step-content">
+        <div class="field">
+          <div class="field-header">
+            <label class="field-label">音色档案</label>
+            <a-space :size="8">
+              <a-button
+                size="small"
+                :loading="polishing"
+                :disabled="!voiceProfile.description.trim() || !llmKey"
+                @click="handlePolish"
+              >
+                <template #icon>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                    <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                  </svg>
+                </template>
+                优化描述
+              </a-button>
+            </a-space>
+          </div>
+          <a-textarea
+            v-model:value="voiceProfile.description"
+            placeholder="例如：一位年轻女性，声音温柔甜美，语速缓慢，带有治愈感"
+            :autoSize="{ minRows: 3, maxRows: 5 }"
+          />
+          <div v-if="polishedText" class="polish-inline">
+            <span class="polish-text">{{ polishedText }}</span>
+            <a-space :size="4">
+              <a-button size="small" type="primary" @click="voiceProfile.description = polishedText; polishedText = ''">采纳</a-button>
+              <a-button size="small" @click="polishedText = ''">取消</a-button>
+            </a-space>
+          </div>
+        </div>
 
-      <!-- Default Voice Description -->
-      <div v-if="segments.length" class="field">
-        <div class="field-header">
-          <label class="field-label">默认音色描述</label>
-          <a-space :size="8">
+        <div class="field">
+          <label class="field-label">负向约束（可选）</label>
+          <a-textarea
+            v-model:value="voiceProfile.negativePrompt"
+            placeholder="例如：不要儿童音，不要播音腔，不要情绪太夸张"
+            :autoSize="{ minRows: 2, maxRows: 3 }"
+          />
+        </div>
+
+        <div class="step-actions">
+          <a-button @click="activeStep = 1">上一步</a-button>
+          <a-button
+            type="primary"
+            :disabled="!voiceProfile.description.trim()"
+            @click="activeStep = 3"
+          >
+            下一步：试听确认
+          </a-button>
+        </div>
+      </div>
+
+      <!-- Step 3: Audition -->
+      <div v-if="activeStep === 3" class="step-content">
+        <div class="audition-section">
+          <div class="audition-text">
+            <div class="field-label">试听文案</div>
+            <p class="audition-content">{{ auditionText }}</p>
+          </div>
+
+          <div class="audition-actions">
             <a-button
-              size="small"
-              :loading="polishingDefault"
-              :disabled="!defaultVoice.trim() || !llmKey"
-              @click="handlePolishDefault"
+              :loading="audition.generating"
+              :disabled="!voiceProfile.description.trim() || !ttsKey"
+              @click="handleAudition"
             >
               <template #icon>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                  <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                  <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
                 </svg>
               </template>
-              润色
+              生成试听
             </a-button>
-            <a-button size="small" type="primary" @click="applyDefaultToAll">
-              应用到全部
+
+            <audio v-if="audition.audioUrl" :src="audition.audioUrl" controls class="audition-player" />
+          </div>
+
+          <div v-if="audition.audioUrl" class="audition-confirm">
+            <a-button
+              type="primary"
+              :class="{ confirmed: audition.confirmed }"
+              @click="audition.confirmed = true"
+            >
+              {{ audition.confirmed ? '已确认音色' : '确认使用这个音色' }}
             </a-button>
-          </a-space>
+            <a-button v-if="!audition.confirmed" size="small" @click="handleAudition">
+              重新生成
+            </a-button>
+          </div>
         </div>
-        <a-textarea
-          v-model:value="defaultVoice"
-          placeholder="例如：一位年轻女性，声音温柔甜美，语速缓慢，带有治愈感"
-          :autoSize="{ minRows: 2, maxRows: 4 }"
-        />
-        <div v-if="polishedDefault" class="polish-inline">
-          <span class="polish-text">{{ polishedDefault }}</span>
-          <a-space :size="4">
-            <a-button size="small" type="primary" @click="defaultVoice = polishedDefault; polishedDefault = ''">采纳</a-button>
-            <a-button size="small" @click="polishedDefault = ''">取消</a-button>
-          </a-space>
+
+        <div class="step-actions">
+          <a-button @click="activeStep = 2">上一步</a-button>
+          <a-button
+            type="primary"
+            :disabled="!audition.confirmed"
+            @click="activeStep = 4"
+          >
+            下一步：生成
+          </a-button>
         </div>
       </div>
 
-      <!-- Segment List -->
-      <div v-if="segments.length" class="segment-list">
-        <div class="segment-list-header">
-          <span class="segment-count">{{ segments.length }} 段</span>
-          <a-space :size="8">
-            <a-button
-              size="small"
-              :disabled="!canGroupSelected"
-              @click="handleGroupSelected"
-            >
-              合成选中 ({{ selectedIndices.size }})
-            </a-button>
-            <a-button
-              type="primary"
-              :loading="batchGenerating"
-              :disabled="!ttsKey"
-              @click="handleBatchGenerate"
-            >
-              全部生成 (ZIP)
-            </a-button>
-            <a-button
-              type="primary"
-              :loading="syncPackaging"
-              :disabled="!ttsKey"
-              @click="handleSyncPackage"
-            >
-              生成同步包
-            </a-button>
-            <a-button size="small" @click="clearAllAudio">清除音频</a-button>
-          </a-space>
+      <!-- Step 4: Generate -->
+      <div v-if="activeStep === 4" class="step-content">
+        <div class="generate-summary">
+          <div class="summary-item">
+            <span class="summary-label">文本</span>
+            <span class="summary-value">{{ sourceTitle }}</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">字数</span>
+            <span class="summary-value">{{ sourceContent.length }} 字</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">字幕段</span>
+            <span class="summary-value">{{ subtitleSegments.length }} 条</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">语音块</span>
+            <span class="summary-value">{{ speechChunks.length }} 个</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">音色</span>
+            <span class="summary-value">{{ voiceProfile.description.slice(0, 30) }}...</span>
+          </div>
         </div>
 
-        <div class="segment-items">
-          <template v-for="item in renderList" :key="item.type === 'segment' ? segments[item.index].id : `group-${item.group.id}`">
-            <!-- Standalone segment -->
-            <div v-if="item.type === 'segment'" class="segment-item" :class="{ selected: selectedIndices.has(item.index) }">
-              <div class="segment-top">
-                <label class="seg-checkbox" @click.prevent="toggleSelect(item.index)">
-                  <span class="checkbox-box" :class="{ checked: selectedIndices.has(item.index) }">
-                    <svg v-if="selectedIndices.has(item.index)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" width="12" height="12">
-                      <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                  </span>
-                </label>
-                <span class="segment-index">{{ item.index + 1 }}</span>
-                <span class="segment-text">{{ segments[item.index].text }}</span>
-                <a-button
-                  size="small"
-                  :loading="segments[item.index].generating"
-                  :disabled="!ttsKey || !getVoice(segments[item.index])"
-                  @click="handleGenerateOne(item.index)"
-                >
-                  合成
-                </a-button>
-              </div>
-
-              <!-- Per-segment voice override -->
-              <div class="segment-voice">
-                <a-input
-                  v-model:value="segments[item.index].voiceDescription"
-                  :placeholder="defaultVoice ? `留空使用默认: ${defaultVoice.slice(0, 20)}...` : '音色描述'"
-                  size="small"
-                  class="voice-input"
-                />
-                <a-button
-                  size="small"
-                  :loading="segments[item.index].polishing"
-                  :disabled="!segments[item.index].voiceDescription.trim() || !llmKey"
-                  @click="handlePolishSegment(item.index)"
-                >
-                  润色
-                </a-button>
-              </div>
-
-              <!-- Polished result for segment -->
-              <div v-if="segments[item.index].polished" class="polish-inline">
-                <span class="polish-text">{{ segments[item.index].polished }}</span>
-                <a-space :size="4">
-                  <a-button size="small" type="primary" @click="segments[item.index].voiceDescription = segments[item.index].polished; segments[item.index].polished = ''">采纳</a-button>
-                  <a-button size="small" @click="segments[item.index].polished = ''">取消</a-button>
-                </a-space>
-              </div>
-
-              <!-- Audio player -->
-              <audio v-if="segments[item.index].audioUrl" :src="segments[item.index].audioUrl" controls class="segment-audio" />
-            </div>
-
-            <!-- Group of segments -->
-            <div v-else class="segment-group">
-              <div class="group-header">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                  <rect x="2" y="7" width="20" height="10" rx="2"/>
-                  <path d="M16 3v4M8 3v4"/>
-                </svg>
-                <span>组合语音 ({{ item.group.indices.size }} 段)</span>
-                <a-button size="small" @click="ungroup(item.group.id)">拆分</a-button>
-              </div>
-              <div
-                v-for="idx in [...item.group.indices].sort((a, b) => a - b)"
-                :key="segments[idx].id"
-                class="segment-item grouped"
-              >
-                <div class="segment-top">
-                  <span class="segment-index">{{ idx + 1 }}</span>
-                  <span class="segment-text">{{ segments[idx].text }}</span>
-                </div>
-              </div>
-              <div class="group-footer">
-                <a-button
-                  type="primary"
-                  :loading="item.group.generating"
-                  :disabled="!ttsKey || !defaultVoice.trim()"
-                  @click="handleSynthGroup(item.group.id)"
-                >
-                  合成一句话
-                </a-button>
-                <audio v-if="item.group.audioUrl" :src="item.group.audioUrl" controls class="group-audio" />
-              </div>
-            </div>
-          </template>
+        <div class="generate-actions">
+          <a-button
+            type="primary"
+            size="large"
+            :loading="generation.loading"
+            :disabled="!canGenerate"
+            @click="handleGenerate"
+            class="generate-btn"
+          >
+            生成同步包
+          </a-button>
+          <p class="generate-hint">将生成完整音频 + 同步字幕 + 语音块</p>
         </div>
-      </div>
 
-      <!-- Empty state -->
-      <div v-if="!segments.length" class="empty-hint">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="40" height="40" class="empty-icon">
-          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-          <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
-          <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
-        </svg>
-        <span>选择已有文本或手动粘贴文字开始合成</span>
+        <!-- Advanced Options -->
+        <a-collapse class="advanced-collapse">
+          <a-collapse-panel key="advanced" header="高级选项">
+            <a-space direction="vertical" style="width: 100%">
+              <a-button block @click="handleBatchGenerate" :loading="batchGenerating" :disabled="!ttsKey">
+                导出逐段音频 (ZIP)
+              </a-button>
+              <a-button block @click="clearAllAudio">
+                清除临时音频
+              </a-button>
+            </a-space>
+          </a-collapse-panel>
+        </a-collapse>
+
+        <div class="step-actions">
+          <a-button @click="activeStep = 3">上一步</a-button>
+        </div>
       </div>
     </div>
   </a-modal>
@@ -257,24 +273,50 @@ defineEmits(['update:open'])
 const textsStore = useTextsStore()
 const { ttsKey, llmKey, systemPrompt } = useSettings()
 
+// Step management
+const activeStep = ref(1)
+
+// Step 1: Source
 const sourceMode = ref('select')
 const selectedTextId = ref(null)
 const pastedText = ref('')
-const defaultVoice = ref('')
-const polishedDefault = ref('')
-const polishingDefault = ref(false)
-const batchGenerating = ref(false)
-const syncPackaging = ref(false)
-const segments = ref([])
-const selectedIndices = ref(new Set())
+const sourceContent = ref('')
 const sourceTitle = ref('语音合成')
-let segmentIdCounter = 0
+const subtitleSegments = ref([])
+const speechChunks = ref([])
 
-// Groups: array of { id, indices: Set<number>, audioUrl: string|null, generating: boolean }
-const groups = ref([])
-let groupIdCounter = 0
+// Step 2: Voice Profile
+const voiceProfile = ref({
+  description: '',
+  negativePrompt: '',
+  confirmed: false,
+})
+const polishedText = ref('')
+const polishing = ref(false)
+
+// Step 3: Audition
+const auditionText = '今天我们来聊一个很实用的方法。它听起来简单，但真正做好并不容易。你可能会问，第一步应该从哪里开始？'
+const audition = ref({
+  generating: false,
+  audioUrl: null,
+  confirmed: false,
+})
+
+// Step 4: Generate
+const generation = ref({
+  loading: false,
+})
+const batchGenerating = ref(false)
 
 const allTexts = computed(() => textsStore.texts)
+
+const canGenerate = computed(() => {
+  return sourceContent.value &&
+    voiceProfile.value.description.trim() &&
+    ttsKey.value &&
+    audition.value.confirmed &&
+    !generation.value.loading
+})
 
 onMounted(() => {
   if (!textsStore.texts.length) textsStore.fetchTexts()
@@ -283,10 +325,20 @@ onMounted(() => {
 watch(
   () => props.open,
   async (isOpen) => {
-    if (!isOpen || !props.initialTextId) return
-    sourceMode.value = 'select'
-    selectedTextId.value = props.initialTextId
-    await handleTextSelect(props.initialTextId)
+    if (!isOpen) {
+      // Reset state when closing
+      activeStep.value = 1
+      sourceContent.value = ''
+      subtitleSegments.value = []
+      speechChunks.value = []
+      audition.value = { generating: false, audioUrl: null, confirmed: false }
+      return
+    }
+    if (props.initialTextId) {
+      sourceMode.value = 'select'
+      selectedTextId.value = props.initialTextId
+      await handleTextSelect(props.initialTextId)
+    }
   }
 )
 
@@ -294,238 +346,98 @@ const filterOption = (input, option) => {
   return option.children[0].children.toLowerCase().includes(input.toLowerCase())
 }
 
-const makeSegment = (text) => ({
-  id: ++segmentIdCounter,
-  text,
-  voiceDescription: '',
-  audioUrl: null,
-  generating: false,
-  polishing: false,
-  polished: '',
-})
+const loadContent = async (content, title) => {
+  sourceContent.value = content
+  sourceTitle.value = title || '语音合成'
 
-const loadSegments = async (content) => {
+  // Generate subtitle segments for preview
   try {
     const { data } = await textsApi.generateSrt({ content, speed: 5, max_chars: 20 })
-    segments.value = data.segments_list.map(text => makeSegment(text))
-    selectedIndices.value = new Set()
-    groups.value = []
+    subtitleSegments.value = data.segments_list || []
   } catch {
-    message.error('分段失败')
+    subtitleSegments.value = []
   }
+
+  // Estimate speech chunks (simple estimation)
+  const chunkMaxChars = 200
+  let chunks = []
+  let currentChunk = ''
+  let currentIndices = []
+  for (let i = 0; i < subtitleSegments.value.length; i++) {
+    const seg = subtitleSegments.value[i]
+    if (currentChunk && currentChunk.length + seg.length > chunkMaxChars) {
+      chunks.push({ text: currentChunk, subtitleIndices: currentIndices })
+      currentChunk = ''
+      currentIndices = []
+    }
+    currentChunk += seg
+    currentIndices.push(i)
+  }
+  if (currentChunk) {
+    chunks.push({ text: currentChunk, subtitleIndices: currentIndices })
+  }
+  speechChunks.value = chunks
 }
 
 const handleTextSelect = async (id) => {
   const text = await textsStore.fetchText(id)
   if (text) {
-    sourceTitle.value = text.title || '语音合成'
-    loadSegments(text.content)
+    await loadContent(text.content, text.title)
   }
 }
 
 const handlePasteLoad = () => {
   if (pastedText.value.trim()) {
-    sourceTitle.value = '手动粘贴'
-    loadSegments(pastedText.value)
+    loadContent(pastedText.value, '手动粘贴')
   }
 }
 
-const getVoice = (seg) => seg.voiceDescription.trim() || defaultVoice.value.trim()
-
-// Selection
-const toggleSelect = (i) => {
-  const s = new Set(selectedIndices.value)
-  if (s.has(i)) s.delete(i)
-  else s.add(i)
-  selectedIndices.value = s
-}
-
-// Check if a segment is in any group
-const isInGroup = (i) => {
-  return groups.value.some(g => g.indices.has(i))
-}
-
-// Check if selected segments can be grouped
-const canGroupSelected = computed(() => {
-  if (selectedIndices.value.size < 2) return false
-  const sorted = [...selectedIndices.value].sort((a, b) => a - b)
-  // Check if any selected indices are already in a group
-  for (const idx of sorted) {
-    if (isInGroup(idx)) return false
+const handlePolish = async () => {
+  polishing.value = true
+  try {
+    const { data } = await ttsApi.polish({
+      api_key: llmKey.value,
+      voice_description: voiceProfile.value.description,
+      system_prompt: systemPrompt.value,
+    })
+    polishedText.value = data.polished
+  } catch (e) {
+    message.error(e.response?.data?.error || '优化失败')
+  } finally {
+    polishing.value = false
   }
-  // Check consecutive
-  for (let k = 1; k < sorted.length; k++) {
-    if (sorted[k] !== sorted[k - 1] + 1) return false
-  }
-  return true
-})
-
-// Group selected segments
-const handleGroupSelected = () => {
-  const sorted = [...selectedIndices.value].sort((a, b) => a - b)
-  const group = {
-    id: ++groupIdCounter,
-    indices: new Set(sorted),
-    audioUrl: null,
-    generating: false,
-  }
-  groups.value = [...groups.value, group]
-  selectedIndices.value = new Set()
-  message.success(`已组合 ${sorted.length} 段`)
 }
 
-// Ungroup a group
-const ungroup = (groupId) => {
-  const group = groups.value.find(g => g.id === groupId)
-  if (group && group.audioUrl) URL.revokeObjectURL(group.audioUrl)
-  groups.value = groups.value.filter(g => g.id !== groupId)
-  message.success('已拆分')
-}
-
-// Synthesize a group as one continuous sentence
-const handleSynthGroup = async (groupId) => {
-  const group = groups.value.find(g => g.id === groupId)
-  if (!group) return
-  const sorted = [...group.indices].sort((a, b) => a - b)
-  const combinedText = sorted.map(i => segments.value[i].text).join('')
-  const voice = defaultVoice.value.trim()
-  group.generating = true
+const handleAudition = async () => {
+  audition.value.generating = true
+  audition.value.confirmed = false
   try {
     const { data } = await ttsApi.synthesize({
       api_key: ttsKey.value,
-      voice_description: voice,
-      text: combinedText,
+      voice_description: voiceProfile.value.description,
+      text: auditionText,
     })
     const binary = atob(data.audio_base64)
     const bytes = new Uint8Array(binary.length)
     for (let j = 0; j < binary.length; j++) bytes[j] = binary.charCodeAt(j)
-    if (group.audioUrl) URL.revokeObjectURL(group.audioUrl)
-    group.audioUrl = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }))
-    message.success(`已合成 ${sorted.length} 段为一句话`)
+    if (audition.value.audioUrl) URL.revokeObjectURL(audition.value.audioUrl)
+    audition.value.audioUrl = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }))
+    message.success('试听音频已生成')
   } catch (e) {
-    message.error(e.response?.data?.error || '合成失败')
+    message.error(e.response?.data?.error || '试听生成失败')
   } finally {
-    group.generating = false
+    audition.value.generating = false
   }
 }
 
-// Render list: computed property to determine rendering order
-const renderList = computed(() => {
-  const items = []
-  const visited = new Set()
-  for (let i = 0; i < segments.value.length; i++) {
-    if (visited.has(i)) continue
-    const group = groups.value.find(g => g.indices.has(i))
-    if (group) {
-      items.push({ type: 'group', group })
-      group.indices.forEach(idx => visited.add(idx))
-    } else {
-      items.push({ type: 'segment', index: i })
-    }
-  }
-  return items
-})
-
-// Polish default voice
-const handlePolishDefault = async () => {
-  polishingDefault.value = true
+const handleGenerate = async () => {
+  generation.value.loading = true
   try {
-    const { data } = await ttsApi.polish({
-      api_key: llmKey.value,
-      voice_description: defaultVoice.value,
-      system_prompt: systemPrompt.value,
-    })
-    polishedDefault.value = data.polished
-  } catch (e) {
-    message.error(e.response?.data?.error || '润色失败')
-  } finally {
-    polishingDefault.value = false
-  }
-}
-
-// Polish per-segment voice
-const handlePolishSegment = async (i) => {
-  const seg = segments.value[i]
-  seg.polishing = true
-  try {
-    const { data } = await ttsApi.polish({
-      api_key: llmKey.value,
-      voice_description: seg.voiceDescription,
-      system_prompt: systemPrompt.value,
-    })
-    seg.polished = data.polished
-  } catch (e) {
-    message.error(e.response?.data?.error || '润色失败')
-  } finally {
-    seg.polishing = false
-  }
-}
-
-const applyDefaultToAll = () => {
-  segments.value.forEach(seg => { seg.voiceDescription = '' })
-  message.success('已应用默认音色到全部片段')
-}
-
-// Generate single segment
-const handleGenerateOne = async (i) => {
-  const seg = segments.value[i]
-  seg.generating = true
-  try {
-    const { data } = await ttsApi.synthesize({
-      api_key: ttsKey.value,
-      voice_description: getVoice(seg),
-      text: seg.text,
-    })
-    const binary = atob(data.audio_base64)
-    const bytes = new Uint8Array(binary.length)
-    for (let j = 0; j < binary.length; j++) bytes[j] = binary.charCodeAt(j)
-    if (seg.audioUrl) URL.revokeObjectURL(seg.audioUrl)
-    seg.audioUrl = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }))
-    message.success(`片段 ${i + 1} 合成完成`)
-  } catch (e) {
-    message.error(e.response?.data?.error || `片段 ${i + 1} 合成失败`)
-  } finally {
-    seg.generating = false
-  }
-}
-
-// Batch generate → ZIP
-const handleBatchGenerate = async () => {
-  batchGenerating.value = true
-  try {
-    const response = await ttsApi.batchSynthesize({
-      api_key: ttsKey.value,
-      default_voice_description: defaultVoice.value,
-      segments: segments.value.map(seg => ({
-        text: seg.text,
-        voice_description: seg.voiceDescription || '',
-      })),
-    })
-    const url = URL.createObjectURL(new Blob([response.data]))
-    const link = document.createElement('a')
-    link.href = url
-    link.download = '语音合成.zip'
-    link.click()
-    URL.revokeObjectURL(url)
-    message.success('批量合成完成')
-  } catch {
-    message.error('批量合成失败')
-  } finally {
-    batchGenerating.value = false
-  }
-}
-
-// Generate synchronized package using v2 API with smart chunking
-const handleSyncPackage = async () => {
-  syncPackaging.value = true
-  try {
-    // 使用完整文本调用 v2 API
-    const fullContent = segments.value.map(seg => seg.text).join('')
     const response = await ttsApi.syncPackageV2({
       api_key: ttsKey.value,
       title: sourceTitle.value,
-      content: fullContent,
-      voice_description: defaultVoice.value,
+      content: sourceContent.value,
+      voice_description: voiceProfile.value.description,
       subtitle_options: {
         max_chars: 20,
         gap: 0.3,
@@ -543,21 +455,44 @@ const handleSyncPackage = async () => {
     URL.revokeObjectURL(url)
     message.success('同步包生成完成')
   } catch (e) {
-    message.error(e.response?.data?.error || '同步包生成失败')
+    message.error(e.response?.data?.error || '生成失败')
   } finally {
-    syncPackaging.value = false
+    generation.value.loading = false
+  }
+}
+
+const handleBatchGenerate = async () => {
+  batchGenerating.value = true
+  try {
+    const response = await ttsApi.batchSynthesize({
+      api_key: ttsKey.value,
+      default_voice_description: voiceProfile.value.description,
+      segments: subtitleSegments.value.map(text => ({
+        text,
+        voice_description: '',
+      })),
+    })
+    const url = URL.createObjectURL(new Blob([response.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = '逐段音频.zip'
+    link.click()
+    URL.revokeObjectURL(url)
+    message.success('逐段音频导出完成')
+  } catch {
+    message.error('导出失败')
+  } finally {
+    batchGenerating.value = false
   }
 }
 
 const clearAllAudio = () => {
-  segments.value.forEach(seg => {
-    if (seg.audioUrl) URL.revokeObjectURL(seg.audioUrl)
-    seg.audioUrl = null
-  })
-  groups.value.forEach(g => {
-    if (g.audioUrl) URL.revokeObjectURL(g.audioUrl)
-    g.audioUrl = null
-  })
+  if (audition.value.audioUrl) {
+    URL.revokeObjectURL(audition.value.audioUrl)
+    audition.value.audioUrl = null
+    audition.value.confirmed = false
+  }
+  message.success('已清除临时音频')
 }
 </script>
 
@@ -565,7 +500,20 @@ const clearAllAudio = () => {
 .voice-synth {
   display: flex;
   flex-direction: column;
-  gap: var(--space-lg);
+  gap: var(--space-xl);
+}
+
+.steps {
+  margin-bottom: var(--space-md);
+}
+
+.step-content {
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* Source Tabs */
@@ -576,6 +524,7 @@ const clearAllAudio = () => {
   border-radius: var(--radius-md);
   padding: 3px;
   border: 1px solid var(--surface-border);
+  margin-bottom: var(--space-md);
 }
 
 .source-tab {
@@ -607,10 +556,6 @@ const clearAllAudio = () => {
   box-shadow: var(--shadow-sm);
 }
 
-.source-tab svg {
-  flex-shrink: 0;
-}
-
 .source-body {
   display: flex;
   flex-direction: column;
@@ -625,7 +570,37 @@ const clearAllAudio = () => {
   align-self: flex-end;
 }
 
+/* Source Summary */
+.source-summary {
+  margin-top: var(--space-lg);
+  padding: var(--space-lg);
+  background: var(--paper-soft);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.summary-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--space-sm);
+}
+
+.summary-stats {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-lg);
+  color: var(--text-muted);
+  font-size: 13px;
+  margin-bottom: var(--space-lg);
+}
+
 /* Field */
+.field {
+  margin-bottom: var(--space-lg);
+}
+
 .field-header {
   display: flex;
   justify-content: space-between;
@@ -639,6 +614,8 @@ const clearAllAudio = () => {
   color: var(--text-muted);
   text-transform: none;
   letter-spacing: 0;
+  margin-bottom: 6px;
+  display: block;
 }
 
 .polish-inline {
@@ -649,8 +626,8 @@ const clearAllAudio = () => {
   background: var(--paper-soft);
   border: 1px solid var(--surface-border-strong);
   border-radius: var(--radius-sm);
-  padding: 6px var(--space-sm);
-  margin-top: 4px;
+  padding: 8px var(--space-sm);
+  margin-top: 8px;
   animation: slideDown 0.2s ease;
 }
 
@@ -666,179 +643,105 @@ const clearAllAudio = () => {
   min-width: 0;
 }
 
-/* Segment List */
-.segment-list-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: var(--space-md);
-}
-
-.segment-count {
-  font-size: 13px;
-  font-weight: 560;
-  color: var(--text-muted);
-}
-
-.segment-items {
-  max-height: 400px;
-  overflow-y: auto;
+/* Audition */
+.audition-section {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
+  gap: var(--space-lg);
 }
 
-.segment-item {
+.audition-text {
+  padding: var(--space-lg);
   background: var(--paper-soft);
   border: 1px solid var(--surface-border);
   border-radius: var(--radius-md);
-  padding: var(--space-sm) var(--space-md);
-  transition: all var(--transition-fast);
 }
 
-.segment-item.selected {
-  border-color: var(--text-primary);
-  box-shadow: var(--shadow-focus);
-}
-
-.segment-item.grouped {
-  border-radius: 0;
-  border: none;
-  border-bottom: 1px solid var(--surface-border);
-  background: transparent;
-}
-
-.segment-item.grouped:last-of-type {
-  border-bottom: none;
-}
-
-.segment-top {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-}
-
-/* Checkbox */
-.seg-checkbox {
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-}
-
-.checkbox-box {
-  width: 18px;
-  height: 18px;
-  border: 1.5px solid var(--surface-border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all var(--transition-fast);
-}
-
-.checkbox-box.checked {
-  background: var(--text-primary);
-  border-color: var(--text-primary);
-  color: var(--text-inverse);
-}
-
-.segment-index {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: var(--surface-active);
-  color: var(--text-primary);
-  font-size: 12px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.segment-text {
-  flex: 1;
-  font-size: 13px;
-  color: var(--text-primary);
-  line-height: 1.6;
-  min-width: 0;
-}
-
-.segment-voice {
-  display: flex;
-  gap: var(--space-sm);
-  margin-top: 6px;
-}
-
-.voice-input {
-  flex: 1;
-}
-
-.segment-audio {
-  width: 100%;
-  height: 36px;
-  margin-top: 6px;
-  border-radius: var(--radius-sm);
-  outline: none;
-}
-
-/* Group */
-.segment-group {
-  background: var(--paper-soft);
-  border: 2px solid var(--text-primary);
-  border-radius: var(--radius-md);
-  transition: all var(--transition-fast);
-}
-
-.group-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-md);
-  background: var(--surface-active);
-  border-bottom: 1px solid var(--surface-border);
-  font-size: 13px;
-  font-weight: 560;
+.audition-content {
+  margin: var(--space-sm) 0 0;
+  font-size: 14px;
+  line-height: 1.8;
   color: var(--text-primary);
 }
 
-.group-header svg {
-  flex-shrink: 0;
-  color: var(--text-primary);
-}
-
-.group-header span {
-  flex: 1;
-}
-
-.group-footer {
+.audition-actions {
   display: flex;
   align-items: center;
   gap: var(--space-md);
-  padding: var(--space-sm) var(--space-md);
-  border-top: 1px solid var(--surface-border);
 }
 
-.group-audio {
+.audition-player {
   flex: 1;
   height: 36px;
   border-radius: var(--radius-sm);
-  outline: none;
 }
 
-/* Empty */
-.empty-hint {
+.audition-confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.audition-confirm .confirmed {
+  background: var(--surface-active);
+  border-color: var(--surface-border);
+}
+
+/* Generate */
+.generate-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  background: var(--paper-soft);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-lg);
+}
+
+.summary-item {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: var(--space-md);
-  color: var(--text-muted);
-  font-size: 14px;
-  padding: var(--space-2xl) 0;
+  gap: 4px;
 }
 
-.empty-icon {
-  color: var(--text-subtle);
+.summary-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.summary-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.generate-actions {
+  text-align: center;
+  margin-bottom: var(--space-lg);
+}
+
+.generate-btn {
+  min-width: 200px;
+  height: 44px;
+  font-size: 15px;
+}
+
+.generate-hint {
+  margin-top: var(--space-sm);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.advanced-collapse {
+  margin-bottom: var(--space-lg);
+}
+
+/* Step Actions */
+.step-actions {
+  display: flex;
+  justify-content: space-between;
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--surface-border);
 }
 </style>
