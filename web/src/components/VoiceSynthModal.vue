@@ -515,19 +515,25 @@ const handleBatchGenerate = async () => {
   }
 }
 
-// Generate synchronized package with full audio, timed SRT, and per-segment wav files
+// Generate synchronized package using v2 API with smart chunking
 const handleSyncPackage = async () => {
   syncPackaging.value = true
   try {
-    const response = await ttsApi.syncPackage({
+    // 使用完整文本调用 v2 API
+    const fullContent = segments.value.map(seg => seg.text).join('')
+    const response = await ttsApi.syncPackageV2({
       api_key: ttsKey.value,
       title: sourceTitle.value,
-      default_voice_description: defaultVoice.value,
-      gap: 0.3,
-      segments: segments.value.map(seg => ({
-        text: seg.text,
-        voice_description: seg.voiceDescription || '',
-      })),
+      content: fullContent,
+      voice_description: defaultVoice.value,
+      subtitle_options: {
+        max_chars: 20,
+        gap: 0.3,
+      },
+      synthesis_options: {
+        mode: 'chunked',
+        chunk_max_chars: 200,
+      },
     })
     const url = URL.createObjectURL(new Blob([response.data], { type: 'application/zip' }))
     const link = document.createElement('a')
