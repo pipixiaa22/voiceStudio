@@ -159,39 +159,40 @@ def generate():
             image_path = os.path.join(tmpdir, f'background{image_ext}')
             image_file.save(image_path)
 
-            # 调用 TTS 生成语音
-            from server.routes.tts import _call_tts, _read_wav_info, _concat_wavs
+            # 使用新服务层生成语音和字幕时间轴
             import base64
-
-            # 将文本分段
             from splitter import split_text
-            segments = split_text(text.content, max_chars=20)
+            from server.services.tts_provider import TTSProvider
+            from server.services.tts_planner import plan_speech_chunks
+            from server.services.audio_package import read_wav_info, concat_wavs
+            from server.services.subtitle_timeline import build_subtitle_timeline
 
-            # 生成每段语音
+            # 创建 provider
+            provider = TTSProvider(api_key)
+
+            # 分割字幕段
+            subtitle_segments = split_text(text.content, max_chars=20)
+
+            # 规划语音块
+            chunks = plan_speech_chunks(subtitle_segments, max_chars=200)
+
+            # 逐块合成
             wav_infos = []
-            timeline = []
-            current_time = 0.0
-            gap = 0.3
-
-            for i, seg_text in enumerate(segments):
-                audio_b64 = _call_tts(api_key, voice_description, seg_text)
+            for chunk in chunks:
+                audio_b64 = provider.synthesize(voice_description, chunk.text)
                 audio_bytes = base64.b64decode(audio_b64)
-                wav_info = _read_wav_info(audio_bytes)
-                duration = wav_info['frames'] / wav_info['framerate']
-
+                wav_info = read_wav_info(audio_bytes)
                 wav_infos.append(wav_info)
-                timeline.append({
-                    'start': current_time,
-                    'end': current_time + duration,
-                    'text': seg_text,
-                })
-                current_time += duration + gap
 
             # 拼接音频
-            full_audio = _concat_wavs(wav_infos, gap)
+            full_audio = concat_wavs(wav_infos, gap=0.3)
             audio_path = os.path.join(tmpdir, 'audio.wav')
             with open(audio_path, 'wb') as f:
                 f.write(full_audio)
+
+            # 生成字幕时间轴
+            chunk_durations = [info['frames'] / info['framerate'] for info in wav_infos]
+            timeline = build_subtitle_timeline(chunks, chunk_durations, gap=0.3, subtitle_segments=subtitle_segments)
 
             # 生成视频
             output_path = os.path.join(tmpdir, 'output.mp4')
