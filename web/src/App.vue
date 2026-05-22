@@ -34,24 +34,6 @@
             </template>
             <span>文本库</span>
           </a-menu-item>
-          <a-menu-item key="/import">
-            <template #icon>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="17 8 12 3 7 8"/>
-                <line x1="12" y1="3" x2="12" y2="15"/>
-              </svg>
-            </template>
-            <span>导入</span>
-          </a-menu-item>
-          <a-menu-item key="/quick-generate">
-            <template #icon>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-              </svg>
-            </template>
-            <span>快速生成</span>
-          </a-menu-item>
         </a-menu>
       </div>
     </a-layout-header>
@@ -72,7 +54,7 @@ import { useRouter, useRoute } from 'vue-router'
 const router = useRouter()
 const route = useRoute()
 
-const selectedKeys = computed(() => [route.path])
+const selectedKeys = computed(() => [route.path === '/' ? '/' : route.path.startsWith('/edit') ? '/' : '/'])
 
 const handleMenuClick = ({ key }) => {
   router.push(key)

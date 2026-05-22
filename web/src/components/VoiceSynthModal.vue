@@ -248,7 +248,10 @@ import { textsApi, ttsApi } from '../api'
 import { useTextsStore } from '../stores/texts'
 import { useSettings } from '../stores/settings'
 
-defineProps({ open: Boolean })
+const props = defineProps({
+  open: Boolean,
+  initialTextId: { type: Number, default: null },
+})
 defineEmits(['update:open'])
 
 const textsStore = useTextsStore()
@@ -276,6 +279,16 @@ const allTexts = computed(() => textsStore.texts)
 onMounted(() => {
   if (!textsStore.texts.length) textsStore.fetchTexts()
 })
+
+watch(
+  () => props.open,
+  async (isOpen) => {
+    if (!isOpen || !props.initialTextId) return
+    sourceMode.value = 'select'
+    selectedTextId.value = props.initialTextId
+    await handleTextSelect(props.initialTextId)
+  }
+)
 
 const filterOption = (input, option) => {
   return option.children[0].children.toLowerCase().includes(input.toLowerCase())

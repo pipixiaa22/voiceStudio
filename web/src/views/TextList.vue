@@ -35,7 +35,11 @@
               <h1 class="page-title">文本库</h1>
               <span class="text-count">{{ filteredTexts.length }} 篇文本</span>
             </div>
-            <a-dropdown :trigger="['click']">
+            <a-dropdown
+              :trigger="['click']"
+              :open="createMenuOpen"
+              @openChange="createMenuOpen = $event"
+            >
               <a-button type="primary" class="new-btn">
                 <template #icon>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -48,12 +52,15 @@
               <template #overlay>
                 <a-menu>
                   <a-menu-item key="new">
-                    <router-link to="/edit">新建文本</router-link>
+                    <router-link to="/edit" @click="createMenuOpen = false">新建文本</router-link>
                   </a-menu-item>
-                  <a-menu-item key="import" @click="batchModalVisible = true">
+                  <a-menu-item key="import">
+                    <router-link to="/import" @click="createMenuOpen = false">导入文本</router-link>
+                  </a-menu-item>
+                  <a-menu-item key="batch" @click="openBatchImport">
                     批量导入
                   </a-menu-item>
-                  <a-menu-item key="quick" @click="quickGenVisible = true">
+                  <a-menu-item key="quick" @click="openQuickGenerate">
                     快速生成 SRT
                   </a-menu-item>
                 </a-menu>
@@ -135,7 +142,7 @@
                     </template>
                   </a-button>
                 </a-tooltip>
-                <a-button @click="voiceSynthVisible = true">
+                <a-button @click="openVoiceSynth">
                   <template #icon>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
@@ -143,6 +150,15 @@
                     </svg>
                   </template>
                   语音合成
+                </a-button>
+                <a-button @click="openVideoGenerate">
+                  <template #icon>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polygon points="23 7 16 12 23 17 23 7"/>
+                      <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                    </svg>
+                  </template>
+                  生成视频
                 </a-button>
                 <a-button @click="handleExport(selectedText)">
                   <template #icon>
@@ -199,8 +215,17 @@
       :title="exportTitle"
     />
     <ApiSettingsModal v-model:open="settingsVisible" />
-    <VoiceSynthModal v-model:open="voiceSynthVisible" />
+    <VoiceSynthModal
+      v-model:open="voiceSynthVisible"
+      :initialTextId="selectedText?.id || null"
+    />
     <QuickGenerateModal v-model:open="quickGenVisible" />
+    <VideoGenerateModal
+      v-if="selectedText"
+      v-model:open="videoModalVisible"
+      :textId="selectedText.id"
+      :textTitle="selectedText.title"
+    />
     <BatchImportModal
       v-model:open="batchModalVisible"
       :folders="folders"
@@ -211,6 +236,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useTextsStore } from '../stores/texts'
 import { useFoldersStore } from '../stores/folders'
 import { textsApi } from '../api'
@@ -218,11 +244,14 @@ import FolderTree from '../components/FolderTree.vue'
 import BatchImportModal from '../components/BatchImportModal.vue'
 import QuickGenerateModal from '../components/QuickGenerateModal.vue'
 import VoiceSynthModal from '../components/VoiceSynthModal.vue'
+import VideoGenerateModal from '../components/VideoGenerateModal.vue'
 import ApiSettingsModal from '../components/ApiSettingsModal.vue'
 import SrtExportModal from '../components/SrtExportModal.vue'
 
 const textsStore = useTextsStore()
 const foldersStore = useFoldersStore()
+const route = useRoute()
+const router = useRouter()
 
 const sidebarCollapsed = ref(false)
 const sidebarHovered = ref(false)
@@ -231,12 +260,14 @@ const selectedTextId = ref(null)
 const searchQuery = ref('')
 const sortBy = ref('created_at')
 const sortOrder = ref('desc')
+const createMenuOpen = ref(false)
 const srtContent = ref('')
 const segmentCount = ref(0)
 const previewLoading = ref(false)
 const batchModalVisible = ref(false)
 const quickGenVisible = ref(false)
 const voiceSynthVisible = ref(false)
+const videoModalVisible = ref(false)
 const exportModalVisible = ref(false)
 const exportContent = ref('')
 const exportTitle = ref('')
@@ -266,6 +297,12 @@ const selectedText = computed(() => {
 const ensureSelection = () => {
   if (!filteredTexts.value.length) {
     selectedTextId.value = null
+    return
+  }
+  const queryTextId = route.query.text ? parseInt(route.query.text) : null
+  if (queryTextId && filteredTexts.value.some(text => text.id === queryTextId)) {
+    selectedTextId.value = queryTextId
+    router.replace({ path: '/', query: {} })
     return
   }
   if (!filteredTexts.value.some(text => text.id === selectedTextId.value)) {
@@ -330,6 +367,26 @@ const handleExport = (record) => {
   exportContent.value = record.content
   exportTitle.value = record.title
   exportModalVisible.value = true
+}
+
+const openBatchImport = () => {
+  createMenuOpen.value = false
+  batchModalVisible.value = true
+}
+
+const openQuickGenerate = () => {
+  createMenuOpen.value = false
+  quickGenVisible.value = true
+}
+
+const openVoiceSynth = () => {
+  createMenuOpen.value = false
+  voiceSynthVisible.value = true
+}
+
+const openVideoGenerate = () => {
+  createMenuOpen.value = false
+  videoModalVisible.value = true
 }
 
 const handleTextDragStart = (textId, event) => {

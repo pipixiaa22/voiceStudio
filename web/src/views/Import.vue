@@ -198,7 +198,7 @@ const handleImport = async () => {
       await textsStore.updateText(text.id, { folder_id: folderId.value })
     }
     message.success('导入成功')
-    router.push('/')
+    router.push({ path: '/', query: { text: text.id } })
   } catch (e) {
     message.error('导入失败')
     console.error('Failed to import:', e)
