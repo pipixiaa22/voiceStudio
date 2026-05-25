@@ -11,6 +11,8 @@ def app():
     })
     with app.app_context():
         _db.create_all()
+        from server.services.video_template import seed_builtin_templates
+        seed_builtin_templates()
         yield app
         _db.drop_all()
 

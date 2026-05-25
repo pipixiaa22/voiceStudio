@@ -73,3 +73,60 @@ def test_video_generate_invalid_ratio(client):
         'aspect_ratio': '4:3',
     })
     assert response.status_code == 400
+
+
+def test_get_templates(client):
+    response = client.get('/api/video/templates')
+    assert response.status_code == 200
+    data = response.get_json()
+    assert len(data) == 5
+    assert data[0]['template_key'] == 'xianxia_narration'
+
+
+def test_get_template_by_key(client):
+    response = client.get('/api/video/templates/xianxia_narration')
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data['template_key'] == 'xianxia_narration'
+
+
+def test_get_template_not_found(client):
+    response = client.get('/api/video/templates/nonexistent')
+    assert response.status_code == 404
+
+
+def test_create_video_job_missing_params(client):
+    response = client.post('/api/video/jobs', json={})
+    assert response.status_code == 400
+
+
+def test_create_video_job(client):
+    response = client.post('/api/video/jobs', json={
+        'title': 'Test Video',
+        'template_key': 'xianxia_narration',
+        'text_id': 1,
+        'images': ['scene1.png'],
+    })
+    assert response.status_code == 202
+    data = response.get_json()
+    assert 'job_id' in data
+    assert data['status'] == 'queued'
+
+
+def test_get_video_job_status(client):
+    create_resp = client.post('/api/video/jobs', json={
+        'title': 'Test',
+        'template_key': 'xianxia_narration',
+        'text_id': 1,
+        'images': ['scene1.png'],
+    })
+    job_id = create_resp.get_json()['job_id']
+    response = client.get(f'/api/video/jobs/{job_id}')
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data['job_id'] == job_id
+
+
+def test_get_video_job_not_found(client):
+    response = client.get('/api/video/jobs/nonexistent')
+    assert response.status_code == 404

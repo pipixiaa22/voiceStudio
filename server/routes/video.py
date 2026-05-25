@@ -212,3 +212,55 @@ def generate():
         print(f"视频生成错误: {e}")
         print(f"错误详情:\n{error_traceback}")
         return jsonify({'error': f'生成视频失败: {str(e)}', 'traceback': error_traceback}), 500
+
+
+from server.services.video_template import get_all_templates, get_template_by_key
+from server.services.video_job import create_job, get_job, list_jobs
+
+
+@video_bp.route('/api/video/templates', methods=['GET'])
+def get_templates():
+    templates = get_all_templates()
+    return jsonify([t.to_dict() for t in templates])
+
+
+@video_bp.route('/api/video/templates/<template_key>', methods=['GET'])
+def get_template(template_key):
+    template = get_template_by_key(template_key)
+    if not template:
+        return jsonify({'error': '模板不存在'}), 404
+    return jsonify(template.to_dict())
+
+
+@video_bp.route('/api/video/jobs', methods=['POST'])
+def create_video_job():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': '请求数据不能为空'}), 400
+    
+    title = data.get('title', '未命名')
+    template_key = data.get('template_key', 'xianxia_narration')
+    
+    template = get_template_by_key(template_key)
+    if not template:
+        return jsonify({'error': f'模板 {template_key} 不存在'}), 400
+    
+    job = create_job(title=title, request=data)
+    return jsonify({
+        'job_id': job.job_id,
+        'status': job.status,
+    }), 202
+
+
+@video_bp.route('/api/video/jobs/<job_id>', methods=['GET'])
+def get_video_job(job_id):
+    job = get_job(job_id)
+    if not job:
+        return jsonify({'error': '任务不存在'}), 404
+    return jsonify(job.to_dict())
+
+
+@video_bp.route('/api/video/jobs', methods=['GET'])
+def list_video_jobs():
+    jobs = list_jobs()
+    return jsonify([j.to_dict() for j in jobs])
