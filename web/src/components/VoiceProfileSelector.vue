@@ -18,7 +18,10 @@
       </div>
       <div class="profile-actions">
         <a-button size="small" @click.stop="showDrawer = true">切换</a-button>
-        <a-button size="small" @click.stop="$emit('audition', selectedProfile)">试听</a-button>
+        <a-button size="small" :loading="auditioning === selectedProfile.id" @click.stop="handleAudition(selectedProfile)">试听</a-button>
+      </div>
+      <div v-if="auditionAudioUrl && auditioning === null" class="audition-player-inline">
+        <audio :src="auditionAudioUrl" controls style="width: 100%; height: 32px;" />
       </div>
     </div>
 
@@ -85,7 +88,7 @@
               <span v-if="profile.emotion">{{ profile.emotion }}</span>
             </div>
             <div class="card-actions">
-              <a-button size="small" @click.stop="$emit('audition', profile)">试听</a-button>
+              <a-button size="small" :loading="auditioning === profile.id" @click.stop="handleAudition(profile)">试听</a-button>
               <a-button
                 v-if="!profile.is_builtin"
                 size="small"
@@ -94,6 +97,9 @@
               >
                 删除
               </a-button>
+            </div>
+            <div v-if="auditionAudioUrl && auditioning === null && selectedProfile?.id === profile.id" class="card-audio">
+              <audio :src="auditionAudioUrl" controls style="width: 100%; height: 32px;" />
             </div>
           </div>
 
@@ -122,8 +128,13 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { message } from 'ant-design-vue'
-import { voiceProfilesApi } from '../api'
+import { voiceProfilesApi, ttsApi } from '../api'
+import { useSettings } from '../stores/settings'
 import VoiceProfileDrawer from './VoiceProfileDrawer.vue'
+
+const { ttsKey } = useSettings()
+
+const auditionText = '今天我们来聊一个很实用的方法。它听起来简单，但真正做好并不容易。'
 
 const props = defineProps({
   modelValue: { type: Object, default: null },
@@ -136,6 +147,10 @@ const showCreateDrawer = ref(false)
 const searchQuery = ref('')
 const activeFilter = ref('all')
 const profiles = ref([])
+
+// Local audition state
+const auditioning = ref(null)  // profile id being auditioned
+const auditionAudioUrl = ref(null)
 
 const filterTabs = [
   { label: '全部', value: 'all' },
@@ -210,6 +225,31 @@ const handleCreated = async (profile) => {
   emit('update:modelValue', profile)
   showCreateDrawer.value = false
   showDrawer.value = false
+}
+
+const handleAudition = async (profile) => {
+  if (!ttsKey.value) {
+    message.error('请先配置 TTS API Key')
+    return
+  }
+  auditioning.value = profile.id
+  auditionAudioUrl.value = null
+  try {
+    const { data } = await ttsApi.synthesize({
+      api_key: ttsKey.value,
+      voice_description: profile.canonical_prompt || profile.raw_description,
+      text: auditionText,
+    })
+    const binary = atob(data.audio_base64)
+    const bytes = new Uint8Array(binary.length)
+    for (let j = 0; j < binary.length; j++) bytes[j] = binary.charCodeAt(j)
+    auditionAudioUrl.value = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }))
+    message.success('试听音频已生成')
+  } catch (e) {
+    message.error(e.response?.data?.error || '试听生成失败')
+  } finally {
+    auditioning.value = null
+  }
 }
 </script>
 
@@ -412,6 +452,14 @@ const handleCreated = async (profile) => {
 .card-actions {
   display: flex;
   gap: var(--space-xs);
+}
+
+.card-audio {
+  margin-top: 8px;
+}
+
+.audition-player-inline {
+  margin-top: 8px;
 }
 
 .empty-list {
