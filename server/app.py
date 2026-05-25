@@ -19,6 +19,8 @@ def create_app(test_config=None):
 
     with app.app_context():
         db.create_all()
+        from server.services.video_template import seed_builtin_templates
+        seed_builtin_templates()
         from server.routes.texts import texts_bp
         from server.routes.folders import folders_bp
         from server.routes.tags import tags_bp
