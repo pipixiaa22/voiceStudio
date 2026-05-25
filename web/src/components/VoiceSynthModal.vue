@@ -268,7 +268,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { textsApi, ttsApi } from '../api'
+import { textsApi, ttsApi, voiceProfilesApi } from '../api'
 import { useTextsStore } from '../stores/texts'
 import { useSettings } from '../stores/settings'
 import VoiceProfileSelector from './VoiceProfileSelector.vue'
@@ -305,7 +305,8 @@ const polishedText = ref('')
 const polishing = ref(false)
 
 // Step 3: Audition
-const auditionText = '今天我们来聊一个很实用的方法。它听起来简单，但真正做好并不容易。你可能会问，第一步应该从哪里开始？'
+const defaultAuditionText = '（古风 叙事）云海翻涌，仙门将启。你若踏上这条修行路，便再无回头之日。'
+const auditionText = computed(() => selectedProfile.value?.audition_text || defaultAuditionText)
 const audition = ref({
   generating: false,
   audioUrl: null,
@@ -438,10 +439,9 @@ const handleProfileAudition = async (profile) => {
   audition.value.generating = true
   audition.value.confirmed = false
   try {
-    const { data } = await ttsApi.synthesize({
+    const { data } = await voiceProfilesApi.audition(profile.id, {
       api_key: ttsKey.value,
-      voice_description: profile.canonical_prompt || profile.raw_description,
-      text: auditionText,
+      text: profile.audition_text || defaultAuditionText,
     })
     const binary = atob(data.audio_base64)
     const bytes = new Uint8Array(binary.length)
@@ -460,11 +460,16 @@ const handleAudition = async () => {
   audition.value.generating = true
   audition.value.confirmed = false
   try {
-    const { data } = await ttsApi.synthesize({
-      api_key: ttsKey.value,
-      voice_description: voiceProfile.value.description,
-      text: auditionText,
-    })
+    const { data } = selectedProfile.value?.id
+      ? await voiceProfilesApi.audition(selectedProfile.value.id, {
+          api_key: ttsKey.value,
+          text: auditionText.value,
+        })
+      : await ttsApi.synthesize({
+          api_key: ttsKey.value,
+          voice_description: voiceProfile.value.description,
+          text: auditionText.value,
+        })
     const binary = atob(data.audio_base64)
     const bytes = new Uint8Array(binary.length)
     for (let j = 0; j < binary.length; j++) bytes[j] = binary.charCodeAt(j)
@@ -485,6 +490,8 @@ const handleGenerate = async () => {
       api_key: ttsKey.value,
       title: sourceTitle.value,
       content: sourceContent.value,
+      voice_profile_id: selectedProfile.value?.id || null,
+      voice_profile_snapshot: selectedProfile.value || null,
       voice_description: voiceProfile.value.description,
       subtitle_options: {
         max_chars: 20,

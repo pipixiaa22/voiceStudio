@@ -1,4 +1,3 @@
-import base64
 from flask import Blueprint, request, jsonify
 from server.services import voice_profile_repository as repo
 from server.services.tts_provider import TTSProvider
@@ -49,6 +48,10 @@ def create_profile():
 
     if not data.get('raw_description'):
         return jsonify({'error': '请填写音色描述'}), 400
+
+    error = _validate_and_normalize_voice_source(data)
+    if error:
+        return jsonify({'error': error}), 400
 
     try:
         profile = repo.create_profile(data)
@@ -101,7 +104,7 @@ def audition_profile(profile_id):
         return jsonify({'error': '请求数据不能为空'}), 400
 
     api_key = data.get('api_key')
-    audition_text = data.get('text', '')
+    audition_text = data.get('text') or profile.get('audition_text') or ''
 
     if not api_key:
         return jsonify({'error': '请填写 API Key'}), 400
@@ -112,9 +115,15 @@ def audition_profile(profile_id):
     audition = repo.create_audition(profile_id, audition_text)
 
     try:
-        # 使用 canonical_prompt 作为音色描述
         provider = TTSProvider(api_key)
-        audio_b64 = provider.synthesize(profile['canonical_prompt'], audition_text)
+        audio_b64 = provider.synthesize(
+            voice_description=profile.get('canonical_prompt') or profile.get('raw_description'),
+            text=audition_text,
+            style_tags=profile.get('style_tags'),
+            model=profile.get('model') or 'mimo-v2.5-tts-voicedesign',
+            voice=_audio_voice_from_profile(profile),
+            optimize_text_preview=True,
+        )
 
         # 更新试听记录
         repo.update_audition(audition['id'], status='completed')
@@ -127,3 +136,52 @@ def audition_profile(profile_id):
         # 更新试听记录为失败
         repo.update_audition(audition['id'], status='failed', error_message=str(e))
         return jsonify({'error': f'试听生成失败: {str(e)}'}), 502
+
+
+def _validate_and_normalize_voice_source(data):
+    source_type = data.get('source_type') or 'voice_design'
+    data['source_type'] = source_type
+
+    if source_type == 'voice_clone':
+        if not data.get('consent_confirmed'):
+            return '请确认样音已获得授权后再创建音色复刻档案'
+        sample = data.get('voice_sample_data_uri') or ''
+        if not _is_supported_voice_sample(sample):
+            return '请上传 mp3 或 wav 格式的授权样音'
+        if _base64_payload_too_large(sample):
+            return '样音 Base64 编码不能超过 10MB'
+        data['model'] = 'mimo-v2.5-tts-voiceclone'
+        return None
+
+    if source_type == 'builtin':
+        if not data.get('builtin_voice'):
+            return '请选择预置音色'
+        data['model'] = 'mimo-v2.5-tts'
+        return None
+
+    data['model'] = data.get('model') or 'mimo-v2.5-tts-voicedesign'
+    return None
+
+
+def _is_supported_voice_sample(data_uri):
+    return (
+        data_uri.startswith('data:audio/wav;base64,')
+        or data_uri.startswith('data:audio/mp3;base64,')
+        or data_uri.startswith('data:audio/mpeg;base64,')
+    )
+
+
+def _base64_payload_too_large(data_uri):
+    if ',' not in data_uri:
+        return True
+    return len(data_uri.split(',', 1)[1]) > 10 * 1024 * 1024
+
+
+def _audio_voice_from_profile(profile):
+    if (
+        profile.get('source_type') == 'voice_clone'
+        or profile.get('model') == 'mimo-v2.5-tts-voiceclone'
+        or profile.get('voice_sample_data_uri')
+    ):
+        return profile.get('voice_sample_data_uri')
+    return profile.get('builtin_voice')

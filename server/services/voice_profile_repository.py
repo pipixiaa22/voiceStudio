@@ -41,7 +41,9 @@ def query_profiles(
     sql = f"""
         SELECT id, profile_key, name, description, raw_description, canonical_prompt,
                negative_prompt, provider, model, language, gender, age_group, accent,
-               speed, emotion, scene, timbre, is_builtin, is_active, sort_order,
+               speed, emotion, scene, timbre, source_type, builtin_voice, style_tags,
+               audition_text, voice_sample_data_uri, voice_sample_mime,
+               voice_sample_filename, consent_confirmed, is_builtin, is_active, sort_order,
                created_at, updated_at
         FROM voice_profiles
         WHERE {where}
@@ -58,7 +60,9 @@ def get_profile_by_id(profile_id: int) -> dict | None:
     sql = """
         SELECT id, profile_key, name, description, raw_description, canonical_prompt,
                negative_prompt, provider, model, language, gender, age_group, accent,
-               speed, emotion, scene, timbre, is_builtin, is_active, sort_order,
+               speed, emotion, scene, timbre, source_type, builtin_voice, style_tags,
+               audition_text, voice_sample_data_uri, voice_sample_mime,
+               voice_sample_filename, consent_confirmed, is_builtin, is_active, sort_order,
                created_at, updated_at
         FROM voice_profiles
         WHERE id = %s
@@ -76,9 +80,12 @@ def create_profile(data: dict) -> dict:
         INSERT INTO voice_profiles (
             profile_key, name, description, raw_description, canonical_prompt,
             negative_prompt, provider, model, language, gender, age_group, accent,
-            speed, emotion, scene, timbre, is_builtin, is_active, sort_order
+            speed, emotion, scene, timbre, source_type, builtin_voice, style_tags,
+            audition_text, voice_sample_data_uri, voice_sample_mime,
+            voice_sample_filename, consent_confirmed, is_builtin, is_active, sort_order
         ) VALUES (
-            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, 1, 100
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s, %s, %s, 0, 1, 100
         )
     """
     params = (
@@ -98,6 +105,14 @@ def create_profile(data: dict) -> dict:
         data.get('emotion'),
         data.get('scene'),
         data.get('timbre'),
+        data.get('source_type', 'voice_design'),
+        data.get('builtin_voice'),
+        data.get('style_tags'),
+        data.get('audition_text'),
+        data.get('voice_sample_data_uri'),
+        data.get('voice_sample_mime'),
+        data.get('voice_sample_filename'),
+        int(bool(data.get('consent_confirmed'))),
     )
 
     with get_cursor() as cursor:
@@ -122,7 +137,9 @@ def update_profile(profile_id: int, data: dict) -> dict | None:
     updatable_fields = [
         'name', 'description', 'raw_description', 'canonical_prompt',
         'negative_prompt', 'gender', 'age_group', 'accent', 'speed',
-        'emotion', 'scene', 'timbre'
+        'emotion', 'scene', 'timbre', 'source_type', 'builtin_voice',
+        'style_tags', 'audition_text', 'voice_sample_data_uri',
+        'voice_sample_mime', 'voice_sample_filename', 'consent_confirmed'
     ]
 
     for field in updatable_fields:

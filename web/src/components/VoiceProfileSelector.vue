@@ -98,7 +98,7 @@
                 删除
               </a-button>
             </div>
-            <div v-if="auditionAudioUrl && auditioning === null && selectedProfile?.id === profile.id" class="card-audio">
+            <div v-if="auditionAudioUrl && auditioning === null && auditionedProfileId === profile.id" class="card-audio">
               <audio :src="auditionAudioUrl" controls style="width: 100%; height: 32px;" />
             </div>
           </div>
@@ -128,13 +128,13 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { message } from 'ant-design-vue'
-import { voiceProfilesApi, ttsApi } from '../api'
+import { voiceProfilesApi } from '../api'
 import { useSettings } from '../stores/settings'
 import VoiceProfileDrawer from './VoiceProfileDrawer.vue'
 
 const { ttsKey } = useSettings()
 
-const auditionText = '今天我们来聊一个很实用的方法。它听起来简单，但真正做好并不容易。'
+const auditionText = '（古风 叙事）云海翻涌，仙门将启。你若踏上这条修行路，便再无回头之日。'
 
 const props = defineProps({
   modelValue: { type: Object, default: null },
@@ -150,6 +150,7 @@ const profiles = ref([])
 
 // Local audition state
 const auditioning = ref(null)  // profile id being auditioned
+const auditionedProfileId = ref(null)  // profile id that was just auditioned
 const auditionAudioUrl = ref(null)
 
 const filterTabs = [
@@ -233,12 +234,12 @@ const handleAudition = async (profile) => {
     return
   }
   auditioning.value = profile.id
+  auditionedProfileId.value = profile.id
   auditionAudioUrl.value = null
   try {
-    const { data } = await ttsApi.synthesize({
+    const { data } = await voiceProfilesApi.audition(profile.id, {
       api_key: ttsKey.value,
-      voice_description: profile.canonical_prompt || profile.raw_description,
-      text: auditionText,
+      text: profile.audition_text || auditionText,
     })
     const binary = atob(data.audio_base64)
     const bytes = new Uint8Array(binary.length)

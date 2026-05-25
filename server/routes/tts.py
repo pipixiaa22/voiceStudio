@@ -8,6 +8,8 @@ from urllib.parse import quote
 
 import requests
 from flask import Blueprint, request, jsonify, send_file
+from server.services import voice_profile_repository as repo
+from server.services.tts_provider import TTSProvider
 
 tts_bp = Blueprint('tts', __name__)
 
@@ -15,15 +17,31 @@ MIMO_TTS_URL = 'https://api.xiaomimimo.com/v1/chat/completions'
 MIMO_LLM_URL = 'https://token-plan-cn.xiaomimimo.com/anthropic/v1/messages'
 
 
-def _call_tts(api_key, voice_description, text):
+def _call_tts(
+    api_key,
+    voice_description,
+    text,
+    *,
+    style_tags=None,
+    model='mimo-v2.5-tts-voicedesign',
+    voice=None,
+    optimize_text_preview=False,
+):
     """Call MiMo TTS API. Returns base64 audio data or raises with error message."""
+    assistant_text = text
+    if style_tags:
+        tags = style_tags.strip()
+        assistant_text = f'{tags}{text}' if tags[0] in '([（［【' else f'（{tags}）{text}'
+    audio = {'format': 'wav', 'optimize_text_preview': optimize_text_preview}
+    if voice:
+        audio['voice'] = voice
     payload = {
-        'model': 'mimo-v2.5-tts-voicedesign',
+        'model': model,
         'messages': [
             {'role': 'user', 'content': voice_description},
-            {'role': 'assistant', 'content': text},
+            {'role': 'assistant', 'content': assistant_text},
         ],
-        'audio': {'format': 'wav'},
+        'audio': audio,
     }
     resp = requests.post(
         MIMO_TTS_URL,
@@ -113,6 +131,10 @@ def synthesize():
     api_key = data.get('api_key')
     voice_description = data.get('voice_description')
     text = data.get('text')
+    style_tags = data.get('style_tags')
+    model = data.get('model', 'mimo-v2.5-tts-voicedesign')
+    voice = data.get('voice')
+    optimize_text_preview = bool(data.get('optimize_text_preview', False))
 
     if not api_key:
         return jsonify({'error': '请填写 API Key'}), 400
@@ -122,7 +144,15 @@ def synthesize():
         return jsonify({'error': '请填写合成文本'}), 400
 
     try:
-        audio_data = _call_tts(api_key, voice_description, text)
+        audio_data = _call_tts(
+            api_key,
+            voice_description,
+            text,
+            style_tags=style_tags,
+            model=model,
+            voice=voice,
+            optimize_text_preview=optimize_text_preview,
+        )
     except requests.RequestException as e:
         return jsonify({'error': f'请求 MiMo API 失败: {e}'}), 502
     except ValueError as e:
@@ -318,7 +348,6 @@ def polish():
 @tts_bp.route('/api/tts/sync-package-v2', methods=['POST'])
 def sync_package_v2():
     """智能分块语音合成。"""
-    from server.services.tts_provider import TTSProvider
     from server.services.tts_planner import plan_speech_chunks
     from server.services.audio_package import read_wav_info, concat_wavs, build_srt, build_zip_package
     from server.services.subtitle_timeline import build_subtitle_timeline
@@ -332,6 +361,8 @@ def sync_package_v2():
     title = _safe_filename(data.get('title', '语音合成'))
     content = data.get('content', '')
     voice_description = data.get('voice_description', '')
+    voice_profile_id = data.get('voice_profile_id')
+    voice_profile_snapshot = data.get('voice_profile_snapshot') or {}
     subtitle_options = data.get('subtitle_options', {})
     synthesis_options = data.get('synthesis_options', {})
 
@@ -339,12 +370,25 @@ def sync_package_v2():
         return jsonify({'error': '请填写 API Key'}), 400
     if not content:
         return jsonify({'error': '请填写文本内容'}), 400
+
+    voice_profile = _resolve_voice_profile(voice_profile_id, voice_profile_snapshot)
+    if voice_profile:
+        voice_description = (
+            voice_profile.get('canonical_prompt')
+            or voice_profile.get('raw_description')
+            or voice_description
+        )
+
     if not voice_description:
         return jsonify({'error': '请填写音色描述'}), 400
 
     max_chars = subtitle_options.get('max_chars', 20)
     gap = subtitle_options.get('gap', 0.3)
     chunk_max_chars = synthesis_options.get('chunk_max_chars', 200)
+    model = (voice_profile or {}).get('model') or 'mimo-v2.5-tts-voicedesign'
+    source_type = (voice_profile or {}).get('source_type') or 'voice_design'
+    audio_voice = _audio_voice_from_profile(voice_profile)
+    style_tags = (voice_profile or {}).get('style_tags')
 
     # 1. 分割字幕段
     subtitle_segments = split_text(content, max_chars=max_chars)
@@ -361,7 +405,14 @@ def sync_package_v2():
 
     for chunk in chunks:
         try:
-            audio_b64 = provider.synthesize(voice_description, chunk.text)
+            audio_b64 = provider.synthesize(
+                voice_description=voice_description,
+                text=chunk.text,
+                style_tags=style_tags,
+                model=model,
+                voice=audio_voice,
+                optimize_text_preview=False,
+            )
             audio_bytes = base64.b64decode(audio_b64)
             wav_info = read_wav_info(audio_bytes)
             wav_infos.append(wav_info)
@@ -384,7 +435,8 @@ def sync_package_v2():
     manifest = {
         'title': title,
         'provider': 'mimo',
-        'model': 'mimo-v2.5-tts-voicedesign',
+        'model': model,
+        'voice_profile': _manifest_voice_profile(voice_profile),
         'subtitle_options': subtitle_options,
         'synthesis_options': synthesis_options,
         'chunks': [
@@ -414,3 +466,34 @@ def sync_package_v2():
     )
     response.headers['Content-Disposition'] = f"attachment; filename*=UTF-8''{encoded_filename}"
     return response
+
+
+def _resolve_voice_profile(profile_id, snapshot):
+    if profile_id:
+        profile = repo.get_profile_by_id(int(profile_id))
+        if profile:
+            return profile
+    if snapshot:
+        return snapshot
+    return None
+
+
+def _manifest_voice_profile(profile):
+    if not profile:
+        return None
+    return {
+        'id': profile.get('id'),
+        'profile_key': profile.get('profile_key'),
+        'name': profile.get('name'),
+        'provider': profile.get('provider', 'mimo'),
+        'model': profile.get('model', 'mimo-v2.5-tts-voicedesign'),
+        'source_type': profile.get('source_type', 'voice_design'),
+    }
+
+
+def _audio_voice_from_profile(profile):
+    if not profile:
+        return None
+    if profile.get('source_type') == 'voice_clone':
+        return profile.get('voice_sample_data_uri')
+    return profile.get('builtin_voice')
