@@ -225,6 +225,8 @@
       v-model:open="videoModalVisible"
       :textId="selectedText.id"
       :textTitle="selectedText.title"
+      :textContent="selectedText.content"
+      :subtitleCount="segmentCount"
     />
     <BatchImportModal
       v-model:open="batchModalVisible"
@@ -244,7 +246,7 @@ import FolderTree from '../components/FolderTree.vue'
 import BatchImportModal from '../components/BatchImportModal.vue'
 import QuickGenerateModal from '../components/QuickGenerateModal.vue'
 import VoiceSynthModal from '../components/VoiceSynthModal.vue'
-import VideoGenerateModal from '../components/VideoGenerateModal.vue'
+import VideoGenerateModal from '../components/video/VideoGenerateModal.vue'
 import ApiSettingsModal from '../components/ApiSettingsModal.vue'
 import SrtExportModal from '../components/SrtExportModal.vue'
 

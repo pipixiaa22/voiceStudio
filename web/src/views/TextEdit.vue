@@ -119,6 +119,7 @@
       v-model:open="videoModalVisible"
       :textId="textId"
       :textTitle="title"
+      :textContent="content"
     />
   </div>
 </template>
@@ -132,7 +133,7 @@ import { useFoldersStore } from '../stores/folders'
 import TagSelector from '../components/TagSelector.vue'
 import SrtLivePreview from '../components/SrtLivePreview.vue'
 import SrtExportModal from '../components/SrtExportModal.vue'
-import VideoGenerateModal from '../components/VideoGenerateModal.vue'
+import VideoGenerateModal from '../components/video/VideoGenerateModal.vue'
 
 const router = useRouter()
 const route = useRoute()
