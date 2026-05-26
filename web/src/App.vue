@@ -35,6 +35,17 @@
             <span>文本库</span>
           </a-menu-item>
         </a-menu>
+        <a-tooltip title="设置">
+          <a-button type="text" class="settings-btn" @click="settingsOpen = true">
+            <template #icon>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+              </svg>
+            </template>
+          </a-button>
+        </a-tooltip>
+        <SettingsDrawer v-model:open="settingsOpen" />
       </div>
     </a-layout-header>
     <a-layout-content class="app-content">
@@ -48,11 +59,26 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import SettingsDrawer from './components/settings/SettingsDrawer.vue'
 
 const router = useRouter()
 const route = useRoute()
+
+const settingsOpen = ref(false)
+
+const handleOpenSettings = () => {
+  settingsOpen.value = true
+}
+
+onMounted(() => {
+  window.addEventListener('open-settings', handleOpenSettings)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('open-settings', handleOpenSettings)
+})
 
 const selectedKeys = computed(() => [route.path === '/' ? '/' : route.path.startsWith('/edit') ? '/' : '/'])
 
@@ -131,6 +157,19 @@ const handleMenuClick = ({ key }) => {
   height: 18px;
   margin-right: 8px;
   vertical-align: -3px;
+}
+
+.settings-btn {
+  color: var(--text-secondary);
+}
+
+.settings-btn:hover {
+  color: var(--text-primary);
+}
+
+.settings-btn svg {
+  width: 18px;
+  height: 18px;
 }
 
 .app-content {
