@@ -80,6 +80,16 @@ export const videoApi = {
       throw error
     }
   },
+
+  getTemplates: () => api.get('/video/templates'),
+
+  getTemplate: (key) => api.get(`/video/templates/${key}`),
+
+  createJob: (data) => api.post('/video/jobs', data),
+
+  getJob: (jobId) => api.get(`/video/jobs/${jobId}`),
+
+  listJobs: () => api.get('/video/jobs'),
 }
 
 export default api
