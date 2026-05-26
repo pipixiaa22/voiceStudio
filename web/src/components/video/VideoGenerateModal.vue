@@ -1,0 +1,144 @@
+<template>
+  <a-modal
+    :open="open"
+    title="生成视频"
+    @update:open="$emit('update:open', $event)"
+    :footer="null"
+    width="680px"
+    :destroy-on-close="true"
+  >
+    <a-steps :current="currentStep" size="small" style="margin-bottom: 24px">
+      <a-step title="模板" />
+      <a-step title="画面" />
+      <a-step title="音色" />
+      <a-step title="音频" />
+      <a-step title="预览" />
+      <a-step title="生成" />
+    </a-steps>
+
+    <div class="step-content">
+      <VideoTemplateStep
+        v-if="currentStep === 0"
+        v-model:selected-template="selectedTemplate"
+        @next="currentStep = 1"
+      />
+      <ScenePlannerStep
+        v-if="currentStep === 1"
+        v-model:scenes="scenes"
+        :subtitle-count="subtitleCount"
+        @prev="currentStep = 0"
+        @next="currentStep = 2"
+      />
+      <SpeakerVoiceStep
+        v-if="currentStep === 2"
+        v-model:speaker-profiles="speakerProfiles"
+        :content="textContent"
+        @prev="currentStep = 1"
+        @next="currentStep = 3"
+      />
+      <AudioMixStep
+        v-if="currentStep === 3"
+        v-model:audio-options="audioOptions"
+        @prev="currentStep = 2"
+        @next="currentStep = 4"
+      />
+      <VideoPreviewStep
+        v-if="currentStep === 4"
+        :selected-template="selectedTemplate"
+        :scenes="scenes"
+        :speaker-profiles="speakerProfiles"
+        :audio-options="audioOptions"
+        @prev="currentStep = 3"
+        @generate="handleGenerate"
+      />
+      <VideoJobProgress
+        v-if="currentStep === 5"
+        :job-id="currentJobId"
+        @done="handleDone"
+        @retry="currentStep = 4"
+      />
+    </div>
+  </a-modal>
+</template>
+
+<script setup>
+import { ref, watch } from 'vue'
+import { message } from 'ant-design-vue'
+import { videoApi } from '../../api'
+import { useSettings } from '../../stores/settings'
+import VideoTemplateStep from './VideoTemplateStep.vue'
+import ScenePlannerStep from './ScenePlannerStep.vue'
+import SpeakerVoiceStep from './SpeakerVoiceStep.vue'
+import AudioMixStep from './AudioMixStep.vue'
+import VideoPreviewStep from './VideoPreviewStep.vue'
+import VideoJobProgress from './VideoJobProgress.vue'
+
+const props = defineProps({
+  open: Boolean,
+  textId: { type: Number, required: true },
+  textTitle: { type: String, default: '视频' },
+  textContent: { type: String, default: '' },
+  subtitleCount: { type: Number, default: 0 },
+})
+
+const emit = defineEmits(['update:open'])
+
+const { llmKey } = useSettings()
+
+const currentStep = ref(0)
+const selectedTemplate = ref(null)
+const scenes = ref([])
+const speakerProfiles = ref({})
+const audioOptions = ref({
+  bgm_enabled: false,
+  bgm_volume: 0.18,
+  bgm_fade_in: 1.0,
+  bgm_fade_out: 1.5,
+  ambient_enabled: false,
+  ambient_key: 'wind',
+  ambient_volume: 0.12,
+})
+const currentJobId = ref(null)
+
+watch(() => props.open, (val) => {
+  if (val) {
+    currentStep.value = 0
+    currentJobId.value = null
+  }
+})
+
+const handleGenerate = async () => {
+  if (!llmKey.value) {
+    message.error('请先配置 API Key')
+    return
+  }
+
+  try {
+    const response = await videoApi.createJob({
+      text_id: props.textId,
+      title: props.textTitle,
+      template_key: selectedTemplate.value?.template_key || 'xianxia_narration',
+      scenes: scenes.value,
+      speaker_profiles: speakerProfiles.value,
+      audio_options: audioOptions.value,
+      api_key: llmKey.value,
+    })
+
+    currentJobId.value = response.data.job_id
+    currentStep.value = 5
+  } catch (error) {
+    message.error(error.response?.data?.error || '创建任务失败')
+  }
+}
+
+const handleDone = () => {
+  message.success('视频生成完成')
+  emit('update:open', false)
+}
+</script>
+
+<style scoped>
+.step-content {
+  min-height: 300px;
+}
+</style>
