@@ -89,7 +89,21 @@ export const videoApi = {
 
   getJob: (jobId) => api.get(`/video/jobs/${jobId}`),
 
+  downloadJob: (jobId) => api.get(`/video/jobs/${jobId}/download`, { responseType: 'blob' }),
+
+  uploadImage: (formData) => api.post('/video/upload-image', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+
   listJobs: () => api.get('/video/jobs'),
+}
+
+export const modelProvidersApi = {
+  getPresets: () => api.get('/model-providers/presets'),
+  getAllModels: () => api.get('/models'),
+  testConnection: (data) => api.post('/model-providers/test', data),
+  llmComplete: (data) => api.post('/models/llm/complete', data),
+  ttsSynthesize: (data) => api.post('/models/tts/synthesize', data),
 }
 
 export default api
