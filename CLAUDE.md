@@ -4,118 +4,87 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SRT subtitle generator for video editors (primarily CapCut/剪映). Converts Chinese text into timed SRT subtitle files with intelligent punctuation-based segmentation. Also supports TTS voice synthesis, static image video generation, and voice profile management.
+SRT subtitle generator and video production tool for Chinese text. Converts Chinese text into timed SRT subtitle files with intelligent punctuation-based segmentation. Also supports TTS voice synthesis, video generation with templates/BGM/effects, voice profile management, and a pluggable multi-provider model system.
 
 ## Commands
 
 ### CLI Usage
 ```bash
-# Generate SRT from file
 uv run main.py input.txt -o output.srt
-
-# Generate SRT from stdin
 echo "你好吗？我很好。" | uv run main.py -o output.srt
-
 # Options: --speed (chars/sec, default 5), --max-chars (default 20)
 ```
 
 ### Web Server
 ```bash
-# Start both Flask backend and Vue frontend
-./start.sh start
-
-# Stop servers
+./start.sh start       # Flask backend (:5002) + Vue frontend (:3000)
 ./start.sh stop
-
-# Check status
 ./start.sh status
-
-# Restart servers
-./start.sh restart
 ```
 
 ### Development
 ```bash
-# Run all tests
-uv run pytest
+uv run pytest                              # All tests
+uv run pytest tests/test_splitter.py -v    # Single test file
+uv run pytest server/tests/ -v             # Backend tests only
 
-# Run specific test file
-uv run pytest tests/test_splitter.py -v
-
-# Run backend tests only
-uv run pytest server/tests/ -v
-
-# Build frontend for production
-cd web && pnpm run build
+cd web && pnpm run dev     # Vue dev server only
+cd web && pnpm run build   # Production build → server/static/
 ```
 
 ## Architecture
 
-### Two Interfaces, Shared Core
-- **CLI** (`main.py`): Direct command-line tool using `splitter.py` and `srt.py`
-- **Web** (`server/` + `web/`): Flask API + Vue 3 SPA, same core modules
+### Core Library (root)
+- `splitter.py` — Chinese text segmentation by punctuation (。？！…then，、；：)
+- `srt.py` — SRT format generator with configurable gap between segments (default 1s). Also `generate_bilingual_srt()` for Chinese+English.
+- `main.py` — CLI wrapper
 
-### Python Backend (`server/`)
-- `app.py` — Flask app factory with SQLite, runs on port 5002
-- `models.py` — SQLAlchemy models: Text, Folder (self-referential hierarchy), Tag (many-to-many)
-- `routes/` — REST API blueprints:
-  - `texts.py` — Text CRUD, import/export, SRT generation
-  - `folders.py` — Folder CRUD
-  - `tags.py` — Tag CRUD
-  - `tts.py` — TTS voice synthesis (MiMo API), includes sync-package-v2 with smart chunking
-  - `video.py` — Static image video generation (moviepy)
-  - `voice_profiles.py` — Voice profile CRUD, audition API
-- `services/` — Business logic layer:
-  - `tts_provider.py` — MiMo TTS API wrapper
-  - `tts_planner.py` — Merges subtitle segments into speech chunks (80-300 chars)
-  - `audio_package.py` — WAV reading, concatenation, SRT generation, ZIP packaging
-  - `subtitle_timeline.py` — Generates subtitle timestamps from chunk durations
-  - `mysql.py` — MySQL connection for voice profiles
-  - `voice_profile_repository.py` — Voice profile database operations
+### Flask Backend (`server/`)
+- `app.py` — Factory pattern, SQLite (`data.db`), registers 7 blueprints, seeds video templates on startup
+- `models.py` — 6 SQLAlchemy models: Text, Folder, Tag, VideoTemplate, VideoJob, VideoAsset
+- `routes/` — 7 blueprints: texts, folders, tags, tts, video, voice_profiles, models
+
+**Key backend patterns:**
+- TTS uses MiMo API (`api.xiaomimimo.com`). LLM uses MiMo Token Plan (`token-plan-cn.xiaomimimo.com/anthropic`).
+- Video jobs run in background daemon threads (`video_job.py`), polled via REST (not WebSocket).
+- Video templates are JSON configs stored in DB, seeded as built-in on startup (`video_template.py`).
+- `deep-translator` (Google Translate) used for bilingual subtitle translation in `routes/texts.py`.
+
+### Pluggable Model Provider System (`server/services/`)
+- `model_provider_base.py` — Abstract `ModelProvider` base class with capability enum
+- `model_registry.py` — Factory with 4 built-in presets: mimo, deepseek, openai, minimax
+- `providers/mimo_provider.py` — MiMo TTS (voice design/clone/builtin) + LLM
+- `providers/openai_provider.py` — OpenAI LLM + TTS + scene planning
+- `providers/openai_compatible_provider.py` — Generic for DeepSeek, MiniMax, etc.
+- Capabilities: `llm_text`, `llm_voice_prompt_polish`, `tts_builtin_voice`, `tts_voice_design`, `tts_voice_clone`, `tts_plain`, `scene_planning`, `script_polish`
+
+### Video Generation Pipeline
+`video.py` route → `video_job.py` (async thread) → `video_scene_planner.py` (LLM scene planning) → `tts_provider.py` (voice synthesis) → `audio_mixer.py` (BGM + ambient + voice mixing) → `video_renderer.py` (moviepy rendering) → `capcut_package.py` (剪映-friendly export)
+
+Video templates define: aspect ratio, resolution, fps, visual effects (zoom/pan/shake/flash), audio mixing ratios, transitions, export settings.
 
 ### Vue Frontend (`web/`)
-- Vue 3 + Vite + Pinia + Ant Design Vue
-- `src/stores/` — Pinia state management for texts, folders, tags
-- `src/api/` — Axios wrapper calling Flask API
-- `src/views/` — Page components: TextList, TextEdit, Import, QuickGenerate
-- `src/components/` — Reusable components including VoiceSynthModal, VoiceProfileSelector, VoiceProfileDrawer
-- Vite dev server proxies `/api/*` to Flask on port 5002
+- Vue 3 + Vite 8 + Pinia 3 + Ant Design Vue 4 + Axios
+- Dev server proxies `/api/*` to Flask on port 5002. Build output → `server/static/`.
+- **Views:** TextList, TextEdit, Import, QuickGenerate
+- **Component subdirectories:** `video/` (7-step wizard), `settings/` (model provider config)
+- **Stores:** texts, folders, tags, settings, modelSettings
+- **API layer:** `web/src/api/index.js` — 7 modules (textsApi, foldersApi, tagsApi, ttsApi, voiceProfilesApi, videoApi, modelProvidersApi)
 
-### Core Modules (Root)
-- `splitter.py` — Chinese text segmentation by punctuation (。？！…then，、；：)
-- `srt.py` — SRT format generator with timestamp calculation
+### Dual Database
+- **SQLite** (`data.db`): Texts, folders, tags, video templates, video jobs, video assets
+- **MySQL** (remote, optional): Voice profiles, audition records. Configured via `.env`.
 
-## Key Design Decisions
-
-1. **Punctuation splitting**: Sentences split by 。？！… first, then by ，、；：if too long, then force-split
-2. **Trailing punctuation**: 。and，are stripped from segment endings; ？and！are preserved
-3. **SRT filenames**: Use RFC 5987 encoding (`filename*=UTF-8''...`) for Chinese filenames
-4. **Port config**: Flask uses port 5002 (5000/5001 often occupied on macOS), Vue on 3000
-5. **Video generation**: Uses moviepy (pure Python) instead of ffmpeg for video synthesis
-6. **TTS smart chunking**: Subtitle segments merged into 80-300 char speech chunks to reduce voice fragmentation
-7. **Voice profiles**: Stored in MySQL (separate from SQLite), support system presets and user-created profiles
-
-## Databases
-
-- **SQLite** (`data.db`): Texts, folders, tags, text_tags
-- **MySQL** (remote): Voice profiles, audition records
-
-MySQL connection configured via `.env` file (see `.env.example`).
-
-## Dependencies
-
-### Python
-- Flask, Flask-SQLAlchemy, Flask-CORS
-- requests (for TTS API calls)
-- moviepy (for video generation)
-- pymysql (for MySQL voice profiles)
-- python-dotenv (for .env loading)
-
-### Frontend
-- Vue 3, Vite, Pinia, Vue Router
-- Ant Design Vue
-- axios
+### SRT Segment Gap
+`generate_srt()` and `generate_bilingual_srt()` in `srt.py` accept a `gap` parameter (default 1.0 second) that adds silence between subtitle segments for readability.
 
 ## Testing
 
-Tests in `tests/` (core modules) and `server/tests/` (API endpoints). Pytest configured in `pyproject.toml` with `pythonpath = [".", "server"]`.
+- `tests/` — Core module tests (splitter, srt)
+- `server/tests/` — 25 test files covering routes and services
+- Pytest configured in `pyproject.toml`: `pythonpath = [".", "server"]`, `testpaths = ["tests", "server/tests"]`
+
+## Key Dependencies
+
+**Python:** Flask, Flask-SQLAlchemy, Flask-CORS, requests, deep-translator, moviepy, pymysql, python-dotenv
+**Frontend:** Vue 3, Vite, Pinia, Vue Router, Ant Design Vue, axios

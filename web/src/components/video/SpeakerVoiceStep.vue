@@ -9,26 +9,25 @@
           <span>文本中未发现【角色】格式的标注，将使用默认音色。</span>
         </template>
       </a-empty>
+      <div class="default-voice">
+        <span class="default-label">默认音色</span>
+        <VoiceProfileSelector
+          :model-value="defaultProfile"
+          @update:model-value="handleDefaultProfileChange"
+        />
+      </div>
     </div>
 
     <div v-else class="speaker-list">
       <div v-for="speaker in speakers" :key="speaker" class="speaker-item">
-        <div class="speaker-name">
+        <div class="speaker-header">
           <span class="speaker-tag">{{ speaker }}</span>
+          <a-tag v-if="speaker === '旁白'" color="orange">默认</a-tag>
         </div>
-        <div class="speaker-voice">
-          <a-select
-            :value="localProfiles[speaker]"
-            @change="(val) => updateProfile(speaker, val)"
-            placeholder="选择音色档案"
-            style="width: 100%"
-            allow-clear
-          >
-            <a-select-option v-for="profile in voiceProfiles" :key="profile.id" :value="profile.id">
-              {{ profile.name }}
-            </a-select-option>
-          </a-select>
-        </div>
+        <VoiceProfileSelector
+          :model-value="localProfiles[speaker] ? findProfileById(localProfiles[speaker]) : null"
+          @update:model-value="(profile) => updateProfile(speaker, profile)"
+        />
       </div>
     </div>
 
@@ -42,6 +41,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { voiceProfilesApi } from '../../api'
+import VoiceProfileSelector from '../VoiceProfileSelector.vue'
 
 const props = defineProps({
   speakerProfiles: { type: Object, default: () => ({}) },
@@ -52,6 +52,7 @@ const emit = defineEmits(['update:speakerProfiles', 'prev', 'next'])
 
 const localProfiles = ref({ ...props.speakerProfiles })
 const voiceProfiles = ref([])
+const defaultProfile = ref(null)
 
 const speakers = computed(() => {
   const regex = /【([^】]+)】/g
@@ -62,6 +63,10 @@ const speakers = computed(() => {
   }
   return Array.from(found)
 })
+
+const findProfileById = (id) => {
+  return voiceProfiles.value.find(p => p.id === id) || null
+}
 
 watch(() => props.speakerProfiles, (val) => {
   localProfiles.value = { ...val }
@@ -76,11 +81,18 @@ onMounted(async () => {
   }
 })
 
-const updateProfile = (speaker, profileId) => {
-  if (profileId) {
-    localProfiles.value[speaker] = profileId
+const updateProfile = (speaker, profile) => {
+  if (profile) {
+    localProfiles.value[speaker] = profile.id
   } else {
     delete localProfiles.value[speaker]
+  }
+}
+
+const handleDefaultProfileChange = (profile) => {
+  defaultProfile.value = profile
+  if (profile) {
+    localProfiles.value['旁白'] = profile.id
   }
 }
 
@@ -103,38 +115,52 @@ const handleNext = () => {
 
 .no-speakers {
   padding: 24px 0;
+  text-align: center;
+}
+
+.default-voice {
+  margin-top: 24px;
+  text-align: left;
+}
+
+.default-label {
+  display: block;
+  font-size: 13px;
+  color: var(--text-secondary, #999);
+  margin-bottom: 8px;
 }
 
 .speaker-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 20px;
 }
 
 .speaker-item {
-  display: flex;
-  align-items: center;
-  gap: 16px;
+  padding: 16px;
+  background: var(--paper-soft, #fafafa);
+  border: 1px solid var(--surface-border, #e8e8e8);
+  border-radius: 8px;
 }
 
-.speaker-name {
-  min-width: 80px;
+.speaker-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 
 .speaker-tag {
   background: var(--primary-bg, #e6f7ff);
-  padding: 2px 8px;
+  padding: 2px 10px;
   border-radius: 4px;
-  font-size: 13px;
-}
-
-.speaker-voice {
-  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .step-actions {
   display: flex;
   justify-content: space-between;
-  margin-top: 16px;
+  margin-top: 24px;
 }
 </style>

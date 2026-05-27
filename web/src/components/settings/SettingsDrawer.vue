@@ -9,11 +9,15 @@
   >
     <a-tabs v-model:activeKey="activeTab">
       <a-tab-pane key="providers" tab="API Key">
-        <ProviderKeyPanel />
+        <ProviderKeyPanel :active="open && activeTab === 'providers'" />
       </a-tab-pane>
 
       <a-tab-pane key="defaults" tab="默认模型">
-        <UsageModelPanel />
+        <UsageModelPanel :active="open && activeTab === 'defaults'" />
+      </a-tab-pane>
+
+      <a-tab-pane key="discovery" tab="视频搜索">
+        <DiscoverySourcePanel :active="open && activeTab === 'discovery'" />
       </a-tab-pane>
 
       <a-tab-pane key="advanced" tab="高级">
@@ -38,17 +42,28 @@
 <script setup>
 import { ref, watch } from 'vue'
 import { useSettings } from '../../stores/settings'
+import DiscoverySourcePanel from './DiscoverySourcePanel.vue'
 import ProviderKeyPanel from './ProviderKeyPanel.vue'
 import UsageModelPanel from './UsageModelPanel.vue'
 
-const props = defineProps({ open: Boolean })
+const props = defineProps({
+  open: Boolean,
+  initialTab: { type: String, default: 'providers' },
+})
 defineEmits(['update:open'])
 
 const { systemPrompt, loadFromStorage } = useSettings()
 const activeTab = ref('providers')
 
 watch(() => props.open, (val) => {
-  if (val) loadFromStorage()
+  if (val) {
+    activeTab.value = props.initialTab || 'providers'
+    loadFromStorage()
+  }
+})
+
+watch(() => props.initialTab, (tab) => {
+  if (props.open && tab) activeTab.value = tab
 })
 </script>
 

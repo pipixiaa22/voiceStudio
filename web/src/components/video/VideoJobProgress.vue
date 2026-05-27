@@ -1,19 +1,47 @@
 <template>
   <div class="progress-step">
-    <h4>视频生成中</h4>
+    <h4>{{ job?.status === 'completed' ? '视频生成完成' : '视频生成中' }}</h4>
 
     <div v-if="job" class="progress-content">
-      <a-progress :percent="Math.round(job.progress * 100)" :status="progressStatus" />
+      <!-- Progress bar (hidden when completed) -->
+      <template v-if="job.status !== 'completed'">
+        <a-progress :percent="Math.round(job.progress * 100)" :status="progressStatus" />
+        <div class="progress-info">
+          <a-tag :color="statusColor">{{ statusLabel }}</a-tag>
+          <span v-if="job.message" class="progress-message">{{ job.message }}</span>
+        </div>
+      </template>
 
-      <div class="progress-info">
-        <a-tag :color="statusColor">{{ statusLabel }}</a-tag>
-        <span v-if="job.message" class="progress-message">{{ job.message }}</span>
+      <!-- Video preview when completed -->
+      <div v-if="job.status === 'completed' && job.has_video" class="video-preview">
+        <video
+          ref="videoPlayer"
+          :src="`/api/video/jobs/${jobId}/preview`"
+          controls
+          preload="metadata"
+          class="video-player"
+        />
       </div>
 
+      <!-- Action buttons when completed -->
       <div v-if="job.status === 'completed'" class="completed-actions">
-        <a-button type="primary" @click="$emit('done')">完成</a-button>
+        <a-space direction="vertical" :size="12" style="width: 100%">
+          <a-space>
+            <a-button type="primary" @click="handleDownloadVideo">
+              下载视频
+            </a-button>
+            <a-button @click="handleDownloadPackage">
+              下载素材包
+            </a-button>
+          </a-space>
+          <a-space>
+            <a-button @click="$emit('done')">完成</a-button>
+            <a-button @click="$emit('retry')">重新生成</a-button>
+          </a-space>
+        </a-space>
       </div>
 
+      <!-- Failed state -->
       <div v-if="job.status === 'failed'" class="failed-actions">
         <a-alert type="error" :message="job.error_message || '生成失败'" style="margin-bottom: 16px" />
         <a-button @click="$emit('retry')">重试</a-button>
@@ -37,7 +65,26 @@ const props = defineProps({
 const emit = defineEmits(['done', 'retry'])
 
 const job = ref(null)
+const videoPlayer = ref(null)
 let pollTimer = null
+
+const handleDownloadVideo = () => {
+  if (!props.jobId) return
+  const url = `/api/video/jobs/${props.jobId}/download-video`
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${job.value?.title || '视频'}.mp4`
+  link.click()
+}
+
+const handleDownloadPackage = () => {
+  if (!props.jobId) return
+  const url = `/api/video/jobs/${props.jobId}/download`
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${job.value?.title || '视频'}_素材包.zip`
+  link.click()
+}
 
 const STATUS_LABELS = {
   queued: '排队中',
@@ -124,7 +171,24 @@ watch(() => props.jobId, () => {
   font-size: 13px;
 }
 
-.completed-actions,
+.video-preview {
+  margin: 16px 0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+}
+
+.video-player {
+  width: 100%;
+  max-height: 400px;
+  display: block;
+}
+
+.completed-actions {
+  margin-top: 16px;
+  text-align: center;
+}
+
 .failed-actions {
   margin-top: 16px;
   text-align: center;

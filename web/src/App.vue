@@ -15,37 +15,50 @@
             <span class="logo-subtitle">字幕工坊</span>
           </div>
         </div>
-        <a-menu
-          theme="dark"
-          mode="horizontal"
-          :selectedKeys="selectedKeys"
-          @click="handleMenuClick"
-          class="main-menu"
-        >
-          <a-menu-item key="/">
-            <template #icon>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
-                <line x1="16" y1="13" x2="8" y2="13"/>
-                <line x1="16" y1="17" x2="8" y2="17"/>
-                <polyline points="10 9 9 9 8 9"/>
-              </svg>
-            </template>
-            <span>文本库</span>
-          </a-menu-item>
-        </a-menu>
-        <a-tooltip title="设置">
-          <a-button type="text" class="settings-btn" @click="settingsOpen = true">
-            <template #icon>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
-              </svg>
-            </template>
-          </a-button>
-        </a-tooltip>
-        <SettingsDrawer v-model:open="settingsOpen" />
+        <div class="header-right">
+          <a-menu
+            theme="dark"
+            mode="horizontal"
+            :selectedKeys="selectedKeys"
+            @click="handleMenuClick"
+            class="main-menu"
+          >
+            <a-menu-item key="/">
+              <template #icon>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="16" y1="13" x2="8" y2="13"/>
+                  <line x1="16" y1="17" x2="8" y2="17"/>
+                  <polyline points="10 9 9 9 8 9"/>
+                </svg>
+              </template>
+              <span>文本库</span>
+            </a-menu-item>
+            <a-menu-item key="/discovery">
+              <template #icon>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="7"/>
+                  <path d="M21 21l-4.35-4.35"/>
+                  <path d="M8 11h6"/>
+                  <path d="M11 8v6"/>
+                </svg>
+              </template>
+              <span>热点采集</span>
+            </a-menu-item>
+          </a-menu>
+          <a-tooltip title="设置">
+            <a-button type="text" class="settings-btn" @click="openDefaultSettings">
+              <template #icon>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+              </template>
+            </a-button>
+          </a-tooltip>
+        </div>
+        <SettingsDrawer v-model:open="settingsOpen" :initial-tab="settingsInitialTab" />
       </div>
     </a-layout-header>
     <a-layout-content class="app-content">
@@ -67,8 +80,15 @@ const router = useRouter()
 const route = useRoute()
 
 const settingsOpen = ref(false)
+const settingsInitialTab = ref('providers')
 
-const handleOpenSettings = () => {
+const handleOpenSettings = (event) => {
+  settingsInitialTab.value = event?.detail?.tab || 'providers'
+  settingsOpen.value = true
+}
+
+const openDefaultSettings = () => {
+  settingsInitialTab.value = 'providers'
   settingsOpen.value = true
 }
 
@@ -80,7 +100,11 @@ onUnmounted(() => {
   window.removeEventListener('open-settings', handleOpenSettings)
 })
 
-const selectedKeys = computed(() => [route.path === '/' ? '/' : route.path.startsWith('/edit') ? '/' : '/'])
+const selectedKeys = computed(() => {
+  if (route.path.startsWith('/discovery')) return ['/discovery']
+  if (route.path === '/' || route.path.startsWith('/edit')) return ['/']
+  return [route.path]
+})
 
 const handleMenuClick = ({ key }) => {
   router.push(key)
@@ -99,12 +123,10 @@ const handleMenuClick = ({ key }) => {
 }
 
 .header-content {
-  max-width: 1400px;
-  margin: 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 var(--space-xl);
+  padding: 0 var(--space-lg);
   height: 64px;
 }
 
@@ -141,6 +163,12 @@ const handleMenuClick = ({ key }) => {
   margin-top: 1px;
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .main-menu {
   border: none !important;
   line-height: 62px;
@@ -173,7 +201,7 @@ const handleMenuClick = ({ key }) => {
 }
 
 .app-content {
-  padding: var(--space-xl);
+  padding: 0;
   min-height: calc(100vh - 64px);
   background: var(--paper);
 }

@@ -439,12 +439,11 @@ watch(selectedText, fetchSrtPreview)
 
 <style scoped>
 .text-workspace {
-  max-width: 1480px;
-  margin: 0 auto;
+  width: 100%;
 }
 
 .workspace-layout {
-  min-height: calc(100vh - 130px);
+  min-height: calc(100vh - 64px);
 }
 
 .sidebar {
@@ -454,7 +453,7 @@ watch(selectedText, fetchSrtPreview)
   border-radius: var(--radius-lg) 0 0 var(--radius-lg);
   padding: var(--space-md);
   overflow-y: auto;
-  max-height: calc(100vh - 130px);
+  max-height: calc(100vh - 64px);
 }
 
 .workspace-content {
@@ -463,7 +462,7 @@ watch(selectedText, fetchSrtPreview)
   background: var(--surface) !important;
   border: 1px solid var(--surface-border);
   border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
-  min-height: calc(100vh - 130px);
+  min-height: calc(100vh - 64px);
   overflow: hidden;
   box-shadow: var(--shadow-sm);
 }
@@ -566,7 +565,7 @@ watch(selectedText, fetchSrtPreview)
 
 .text-list {
   padding: var(--space-sm);
-  max-height: calc(100vh - 310px);
+  max-height: calc(100vh - 240px);
   overflow-y: auto;
 }
 
@@ -722,7 +721,7 @@ watch(selectedText, fetchSrtPreview)
   line-height: 2;
   font-size: 15px;
   overflow-y: auto;
-  max-height: calc(100vh - 250px);
+  max-height: calc(100vh - 180px);
 }
 
 .srt-preview {
@@ -737,7 +736,7 @@ watch(selectedText, fetchSrtPreview)
   font-size: 12px;
   line-height: 1.8;
   overflow-y: auto;
-  max-height: calc(100vh - 250px);
+  max-height: calc(100vh - 180px);
 }
 
 .preview-placeholder {

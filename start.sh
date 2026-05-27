@@ -33,30 +33,35 @@ start() {
 }
 
 stop() {
-    if [ ! -f "$PID_FILE" ]; then
-        echo "No servers running (PID file not found)"
-        return
-    fi
-
-    read FLASK_PID VUE_PID < "$PID_FILE"
-
     echo "Stopping servers..."
 
-    if kill -0 "$FLASK_PID" 2>/dev/null; then
-        kill "$FLASK_PID"
-        echo "Flask backend stopped (PID: $FLASK_PID)"
-    else
-        echo "Flask backend not running"
+    # Kill processes on specific ports
+    for port in 5002 3000; do
+        pid=$(lsof -ti:$port 2>/dev/null)
+        if [ -n "$pid" ]; then
+            kill $pid 2>/dev/null && echo "Killed process on port $port (PID: $pid)" || echo "Failed to kill process on port $port"
+        fi
+    done
+
+    # Also kill from PID file if exists
+    if [ -f "$PID_FILE" ]; then
+        read FLASK_PID VUE_PID < "$PID_FILE"
+        kill -0 "$FLASK_PID" 2>/dev/null && kill "$FLASK_PID" 2>/dev/null
+        kill -0 "$VUE_PID" 2>/dev/null && kill "$VUE_PID" 2>/dev/null
+        rm -f "$PID_FILE"
     fi
 
-    if kill -0 "$VUE_PID" 2>/dev/null; then
-        kill "$VUE_PID"
-        echo "Vue frontend stopped (PID: $VUE_PID)"
-    else
-        echo "Vue frontend not running"
-    fi
+    # Wait for processes to stop
+    sleep 1
 
-    rm -f "$PID_FILE"
+    # Force kill if still running
+    for port in 5002 3000; do
+        pid=$(lsof -ti:$port 2>/dev/null)
+        if [ -n "$pid" ]; then
+            kill -9 $pid 2>/dev/null && echo "Force killed process on port $port (PID: $pid)"
+        fi
+    done
+
     echo "Servers stopped"
 }
 

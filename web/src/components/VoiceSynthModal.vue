@@ -8,6 +8,30 @@
     :bodyStyle="{ padding: '24px', maxHeight: 'calc(100vh - 160px)', overflowY: 'auto' }"
   >
     <div class="voice-synth">
+      <!-- Missing Key Alerts -->
+      <a-alert
+        v-if="!hasTtsKey"
+        type="warning"
+        show-icon
+        style="margin-bottom: 16px"
+      >
+        <template #message>
+          <span>需要配置 MiMo TTS API Key 才能生成语音。</span>
+          <a-button type="link" size="small" @click="handleOpenSettings">去设置</a-button>
+        </template>
+      </a-alert>
+      <a-alert
+        v-if="hasTtsKey && !hasLlmKey"
+        type="info"
+        show-icon
+        style="margin-bottom: 16px"
+      >
+        <template #message>
+          <span>未配置 MiMo LLM API Key，音色描述优化不可用。</span>
+          <a-button type="link" size="small" @click="handleOpenSettings">去设置</a-button>
+        </template>
+      </a-alert>
+
       <!-- Step Indicator -->
       <a-steps :current="activeStep" size="small" class="steps">
         <a-step title="选择文本" />
@@ -280,7 +304,13 @@ const props = defineProps({
 defineEmits(['update:open'])
 
 const textsStore = useTextsStore()
-const { ttsKey, llmKey, systemPrompt } = useSettings()
+const { ttsKey, llmKey, hasTtsKey, hasLlmKey, systemPrompt } = useSettings()
+
+const handleOpenSettings = () => {
+  // Emit event to parent to open settings modal
+  // For now, we'll use a simple approach
+  window.dispatchEvent(new CustomEvent('open-settings'))
+}
 
 // Step management
 const activeStep = ref(1)

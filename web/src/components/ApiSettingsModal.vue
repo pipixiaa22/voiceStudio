@@ -2,27 +2,27 @@
   <a-modal
     :open="open"
     @update:open="$emit('update:open', $event)"
-    title="API 设置"
+    title="API 与模型设置"
     @ok="handleSave"
     okText="保存"
     cancelText="取消"
     width="520px"
   >
     <a-form layout="vertical" class="settings-form">
-      <a-form-item label="语音合成 API Key">
+      <a-form-item label="MiMo TTS API Key">
         <a-input-password
           v-model:value="ttsKey"
           placeholder="MiMo TTS API Key"
         />
-        <span class="hint">用于 mimo-v2.5-tts-voicedesign 语音合成</span>
+        <span class="hint">用于语音合成、音色试听、视频旁白生成</span>
       </a-form-item>
 
-      <a-form-item label="文本润色 API Key">
+      <a-form-item label="MiMo LLM API Key">
         <a-input-password
           v-model:value="llmKey"
           placeholder="MiMo Token Plan API Key"
         />
-        <span class="hint">用于 mimo-v2.5-pro 音色描述润色</span>
+        <span class="hint">用于音色描述优化</span>
       </a-form-item>
 
       <a-form-item label="润色系统提示词">

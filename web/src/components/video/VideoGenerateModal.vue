@@ -16,10 +16,23 @@
       <a-step title="生成" />
     </a-steps>
 
+    <a-alert
+      v-if="!hasTtsKey"
+      type="warning"
+      show-icon
+      style="margin-bottom: 16px"
+    >
+      <template #message>
+        <span>视频旁白生成需要 MiMo TTS API Key。</span>
+        <a-button type="link" size="small" @click="handleOpenSettings">去设置</a-button>
+      </template>
+    </a-alert>
+
     <div class="step-content">
       <VideoTemplateStep
         v-if="currentStep === 0"
         v-model:selected-template="selectedTemplate"
+        :preferred-template-key="prefill?.template_key"
         @next="currentStep = 1"
       />
       <ScenePlannerStep
@@ -79,11 +92,16 @@ const props = defineProps({
   textTitle: { type: String, default: '视频' },
   textContent: { type: String, default: '' },
   subtitleCount: { type: Number, default: 0 },
+  prefill: { type: Object, default: null },
 })
 
 const emit = defineEmits(['update:open'])
 
-const { llmKey } = useSettings()
+const { llmKey, ttsKey, hasTtsKey } = useSettings()
+
+const handleOpenSettings = () => {
+  window.dispatchEvent(new CustomEvent('open-settings'))
+}
 
 const currentStep = ref(0)
 const selectedTemplate = ref(null)
@@ -104,24 +122,54 @@ watch(() => props.open, (val) => {
   if (val) {
     currentStep.value = 0
     currentJobId.value = null
+    selectedTemplate.value = null
+    audioOptions.value = {
+      bgm_enabled: props.prefill?.audio_options?.bgm_enabled ?? false,
+      bgm_volume: props.prefill?.audio_options?.bgm_volume ?? 0.18,
+      bgm_fade_in: props.prefill?.audio_options?.bgm_fade_in ?? 1.0,
+      bgm_fade_out: props.prefill?.audio_options?.bgm_fade_out ?? 1.5,
+      ambient_enabled: props.prefill?.audio_options?.ambient_enabled ?? false,
+      ambient_key: props.prefill?.audio_options?.ambient_key ?? 'wind',
+      ambient_volume: props.prefill?.audio_options?.ambient_volume ?? 0.12,
+    }
   }
 })
 
 const handleGenerate = async () => {
-  if (!llmKey.value) {
-    message.error('请先配置 API Key')
+  if (!ttsKey.value) {
+    message.error('请先配置 TTS API Key')
     return
   }
 
   try {
+    // Upload images first
+    const uploadedScenes = []
+    for (const scene of scenes.value) {
+      if (scene.imageFile) {
+        const formData = new FormData()
+        formData.append('image', scene.imageFile)
+        const uploadRes = await videoApi.uploadImage(formData)
+        uploadedScenes.push({
+          ...scene,
+          imagePath: uploadRes.data.path,
+          imageFile: undefined,
+        })
+      } else {
+        uploadedScenes.push(scene)
+      }
+    }
+
     const response = await videoApi.createJob({
       text_id: props.textId,
       title: props.textTitle,
       template_key: selectedTemplate.value?.template_key || 'xianxia_narration',
-      scenes: scenes.value,
+      scenes: uploadedScenes,
       speaker_profiles: speakerProfiles.value,
       audio_options: audioOptions.value,
-      api_key: llmKey.value,
+      subtitle_options: props.prefill?.subtitle_options || undefined,
+      voice_description: props.prefill?.voice_description,
+      source_context: props.prefill?.source_context,
+      api_key: ttsKey.value,
     })
 
     currentJobId.value = response.data.job_id

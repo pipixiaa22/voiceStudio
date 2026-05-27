@@ -215,7 +215,7 @@ def generate():
 
 
 from server.services.video_template import get_all_templates, get_template_by_key
-from server.services.video_job import create_job, get_job, list_jobs
+from server.services.video_job import create_job, get_job, list_jobs, start_job_processing
 
 
 @video_bp.route('/api/video/templates', methods=['GET'])
@@ -246,6 +246,11 @@ def create_video_job():
         return jsonify({'error': f'模板 {template_key} 不存在'}), 400
     
     job = create_job(title=title, request=data)
+    
+    # Start background processing
+    from flask import current_app
+    start_job_processing(job.job_id, current_app._get_current_object())
+    
     return jsonify({
         'job_id': job.job_id,
         'status': job.status,
@@ -264,3 +269,83 @@ def get_video_job(job_id):
 def list_video_jobs():
     jobs = list_jobs()
     return jsonify([j.to_dict() for j in jobs])
+
+
+@video_bp.route('/api/video/upload-image', methods=['POST'])
+def upload_video_image():
+    """Upload an image for video generation."""
+    if 'image' not in request.files:
+        return jsonify({'error': '没有上传图片'}), 400
+    
+    image_file = request.files['image']
+    if not image_file.filename:
+        return jsonify({'error': '没有选择文件'}), 400
+    
+    # Save to temp directory
+    upload_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'outputs', 'uploads')
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    import uuid
+    ext = os.path.splitext(image_file.filename)[1] or '.jpg'
+    filename = f'{uuid.uuid4().hex}{ext}'
+    filepath = os.path.join(upload_dir, filename)
+    image_file.save(filepath)
+    
+    return jsonify({
+        'filename': filename,
+        'path': filepath,
+    })
+
+
+@video_bp.route('/api/video/jobs/<job_id>/download', methods=['GET'])
+def download_video_job(job_id):
+    job = get_job(job_id)
+    if not job:
+        return jsonify({'error': '任务不存在'}), 404
+    if job.status != 'completed':
+        return jsonify({'error': '任务未完成'}), 400
+    if not job.output_path or not os.path.exists(job.output_path):
+        return jsonify({'error': '文件不存在'}), 404
+    
+    return send_file(
+        job.output_path,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name=f'{job.title}_视频素材包.zip',
+    )
+
+
+@video_bp.route('/api/video/jobs/<job_id>/preview', methods=['GET'])
+def preview_video_job(job_id):
+    """Serve the MP4 video for preview."""
+    job = get_job(job_id)
+    if not job:
+        return jsonify({'error': '任务不存在'}), 404
+    if job.status != 'completed':
+        return jsonify({'error': '任务未完成'}), 400
+    if not job.video_path or not os.path.exists(job.video_path):
+        return jsonify({'error': '视频文件不存在'}), 404
+    
+    return send_file(
+        job.video_path,
+        mimetype='video/mp4',
+    )
+
+
+@video_bp.route('/api/video/jobs/<job_id>/download-video', methods=['GET'])
+def download_video_only(job_id):
+    """Download just the MP4 video file."""
+    job = get_job(job_id)
+    if not job:
+        return jsonify({'error': '任务不存在'}), 404
+    if job.status != 'completed':
+        return jsonify({'error': '任务未完成'}), 400
+    if not job.video_path or not os.path.exists(job.video_path):
+        return jsonify({'error': '视频文件不存在'}), 404
+    
+    return send_file(
+        job.video_path,
+        mimetype='video/mp4',
+        as_attachment=True,
+        download_name=f'{job.title}.mp4',
+    )

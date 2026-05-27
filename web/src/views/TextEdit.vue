@@ -212,8 +212,7 @@ const handleSave = async () => {
 
 <style scoped>
 .edit-page {
-  max-width: 1400px;
-  margin: 0 auto;
+  width: 100%;
   animation: pageEnter 0.3s ease;
 }
 
@@ -297,7 +296,7 @@ const handleSave = async () => {
   flex-shrink: 0;
   position: sticky;
   top: 80px;
-  max-height: calc(100vh - 100px);
+  max-height: calc(100vh - 70px);
   overflow-y: auto;
   background: var(--surface);
   border: 1px solid var(--surface-border);

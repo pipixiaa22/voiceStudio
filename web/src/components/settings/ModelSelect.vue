@@ -27,7 +27,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { modelProvidersApi } from '../../api'
 import { useModelSettings } from '../../stores/modelSettings'
 
@@ -36,6 +36,7 @@ const props = defineProps({
   capability: String,
   placeholder: { type: String, default: '选择模型' },
   allowClear: { type: Boolean, default: false },
+  active: { type: Boolean, default: true },
 })
 
 const emit = defineEmits(['update:value', 'change'])
@@ -63,11 +64,23 @@ const isProviderEnabled = (providerKey) => {
   return settings.value.providers.some(p => p.provider_key === providerKey && p.enabled !== false)
 }
 
-onMounted(async () => {
+const loaded = ref(false)
+
+const loadModels = async () => {
+  if (loaded.value) return
   try {
     const { data } = await modelProvidersApi.getAllModels()
     allModels.value = data
-  } catch {}
+    loaded.value = true
+  } catch (e) {
+    console.error('加载模型列表失败:', e)
+  }
+}
+
+onMounted(loadModels)
+
+watch(() => props.active, (val) => {
+  if (val) loadModels()
 })
 
 const handleChange = (val) => {

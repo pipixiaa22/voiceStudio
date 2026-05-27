@@ -98,12 +98,31 @@ export const videoApi = {
   listJobs: () => api.get('/video/jobs'),
 }
 
+export const discoveryApi = {
+  getSources: () => api.get('/discovery/sources'),
+  updateSourceConfig: (platform, data) => api.put(`/discovery/sources/${platform}/config`, data),
+  search: (data) => api.post('/discovery/search', data),
+  listItems: (params) => api.get('/discovery/items', { params }),
+  listQueries: () => api.get('/discovery/queries'),
+  resolveUrl: (data) => api.post('/discovery/resolve-url', data),
+  analyzeItem: (id) => api.post(`/discovery/items/${id}/analyze`),
+  createText: (id, data) => api.post(`/discovery/items/${id}/create-text`, data),
+  toggleFavorite: (id) => api.put(`/discovery/items/${id}/favorite`),
+}
+
 export const modelProvidersApi = {
   getPresets: () => api.get('/model-providers/presets'),
   getAllModels: () => api.get('/models'),
   testConnection: (data) => api.post('/model-providers/test', data),
   llmComplete: (data) => api.post('/models/llm/complete', data),
   ttsSynthesize: (data) => api.post('/models/tts/synthesize', data),
+}
+
+export const customProvidersApi = {
+  list: () => api.get('/model-providers/custom'),
+  create: (data) => api.post('/model-providers/custom', data),
+  update: (id, data) => api.put(`/model-providers/custom/${id}`, data),
+  delete: (id) => api.delete(`/model-providers/custom/${id}`),
 }
 
 export default api

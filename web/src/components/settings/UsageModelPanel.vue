@@ -9,6 +9,7 @@
         @change="(val, model) => handleUsageChange(usage.key, val, model)"
         :capability="usage.capability"
         :placeholder="usage.placeholder"
+        :active="active"
         allow-clear
       />
     </div>
@@ -22,6 +23,7 @@
         @change="(val, model) => handleUsageChange(usage.key, val, model)"
         :capability="usage.capability"
         :placeholder="usage.placeholder"
+        :active="active"
         allow-clear
       />
     </div>
@@ -31,6 +33,10 @@
 <script setup>
 import { useModelSettings } from '../../stores/modelSettings'
 import ModelSelect from './ModelSelect.vue'
+
+const props = defineProps({
+  active: { type: Boolean, default: true },
+})
 
 const { setUsageDefault, getUsageDefault } = useModelSettings()
 

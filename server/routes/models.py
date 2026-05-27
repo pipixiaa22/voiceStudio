@@ -1,5 +1,8 @@
+import json
+import uuid
 from flask import Blueprint, request, jsonify
 from server.services.model_registry import ModelRegistry
+from server.models import db, CustomProvider
 
 models_bp = Blueprint('models', __name__)
 registry = ModelRegistry()
@@ -30,7 +33,18 @@ def get_presets():
 
 @models_bp.route('/api/models', methods=['GET'])
 def get_all_models():
-    return jsonify(registry.get_all_models())
+    result = registry.get_all_models()
+    for cp in CustomProvider.query.all():
+        for m in (cp.models_json and json.loads(cp.models_json) or []):
+            result.append({
+                'provider_key': cp.provider_key,
+                'provider_name': cp.display_name,
+                'model_key': m['model_key'],
+                'model_name': m.get('display_name', m['model_key']),
+                'capabilities': m.get('capabilities', []),
+                'is_custom': True,
+            })
+    return jsonify(result)
 
 
 @models_bp.route('/api/model-providers/test', methods=['POST'])
@@ -131,3 +145,64 @@ def tts_synthesize():
         return jsonify({'audio_base64': base64.b64encode(audio_bytes).decode()})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@models_bp.route('/api/model-providers/custom', methods=['GET'])
+def list_custom_providers():
+    providers = CustomProvider.query.order_by(CustomProvider.created_at.desc()).all()
+    return jsonify([p.to_dict() for p in providers])
+
+
+@models_bp.route('/api/model-providers/custom', methods=['POST'])
+def create_custom_provider():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': '请求数据不能为空'}), 400
+
+    display_name = data.get('display_name', '').strip()
+    base_url = data.get('base_url', '').strip()
+    models = data.get('models', [])
+
+    if not display_name:
+        return jsonify({'error': '请输入供应商名称'}), 400
+    if not base_url:
+        return jsonify({'error': '请输入 Base URL'}), 400
+    if not models:
+        return jsonify({'error': '请至少添加一个模型'}), 400
+
+    provider_key = f'custom_{uuid.uuid4().hex[:8]}'
+    cp = CustomProvider(
+        provider_key=provider_key,
+        display_name=display_name,
+        base_url=base_url,
+        models_json=json.dumps(models, ensure_ascii=False),
+    )
+    db.session.add(cp)
+    db.session.commit()
+    return jsonify(cp.to_dict()), 201
+
+
+@models_bp.route('/api/model-providers/custom/<int:cp_id>', methods=['PUT'])
+def update_custom_provider(cp_id):
+    cp = CustomProvider.query.get_or_404(cp_id)
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': '请求数据不能为空'}), 400
+
+    if 'display_name' in data:
+        cp.display_name = data['display_name'].strip()
+    if 'base_url' in data:
+        cp.base_url = data['base_url'].strip()
+    if 'models' in data:
+        cp.models_json = json.dumps(data['models'], ensure_ascii=False)
+
+    db.session.commit()
+    return jsonify(cp.to_dict())
+
+
+@models_bp.route('/api/model-providers/custom/<int:cp_id>', methods=['DELETE'])
+def delete_custom_provider(cp_id):
+    cp = CustomProvider.query.get_or_404(cp_id)
+    db.session.delete(cp)
+    db.session.commit()
+    return jsonify({'ok': True})

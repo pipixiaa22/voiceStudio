@@ -9,6 +9,21 @@ from server.services.discovery.script_adapter import create_text_from_analysis
 
 discovery_bp = Blueprint('discovery', __name__)
 
+DISCOVERY_SOURCE_CONFIG_FIELDS = {
+    'youtube': [
+        {'key': 'api_key', 'label': 'YouTube Data API Key', 'required': True},
+    ],
+    'douyin': [
+        {'key': 'api_key', 'label': '抖音开放平台 API Key', 'required': True},
+    ],
+    'kuaishou': [
+        {'key': 'api_key', 'label': '快手开放平台 API Key', 'required': True},
+    ],
+    'bilibili': [
+        {'key': 'api_key', 'label': 'B 站开放平台 API Key', 'required': True},
+    ],
+}
+
 
 def _get_item_or_404(item_id):
     """Get a DiscoveryItem by ID or return 404."""
@@ -19,18 +34,72 @@ def _get_item_or_404(item_id):
     return item
 
 
+def _load_source_config(source: DiscoverySource) -> dict:
+    if not source.config_json:
+        return {}
+    try:
+        return json.loads(source.config_json)
+    except json.JSONDecodeError:
+        return {}
+
+
+def _source_config_state(source: DiscoverySource) -> dict:
+    fields = DISCOVERY_SOURCE_CONFIG_FIELDS.get(source.platform_key, [])
+    config = _load_source_config(source)
+    required_keys = [field['key'] for field in fields if field.get('required')]
+    return {
+        'needs_api_key': any(field['key'] == 'api_key' and field.get('required') for field in fields),
+        'config_fields': fields,
+        'is_configured': all(str(config.get(key, '')).strip() for key in required_keys),
+    }
+
+
+def _source_to_response(source: DiscoverySource) -> dict:
+    data = source.to_dict()
+    connector = ConnectorRegistry.get(source.platform_key)
+    data['config'] = {}
+    data['supports_search'] = connector is not None and source.platform_key != 'manual'
+    data.update(_source_config_state(source))
+    return data
+
+
 @discovery_bp.route('/api/discovery/sources', methods=['GET'])
 def get_sources():
     sources = db.session.execute(
         select(DiscoverySource).order_by(DiscoverySource.id)
     ).scalars().all()
-    result = []
-    for src in sources:
-        d = src.to_dict()
-        connector = ConnectorRegistry.get(src.platform_key)
-        d['needs_api_key'] = connector is not None and hasattr(connector, '_get_api_key')
-        result.append(d)
-    return jsonify(result)
+    return jsonify([_source_to_response(src) for src in sources])
+
+
+@discovery_bp.route('/api/discovery/sources/<platform_key>/config', methods=['PUT'])
+def update_source_config(platform_key):
+    source = db.session.execute(
+        select(DiscoverySource).filter_by(platform_key=platform_key)
+    ).scalars().first()
+    if not source:
+        return jsonify({'error': '平台不存在'}), 404
+
+    data = request.get_json() or {}
+    incoming_config = data.get('config') or {}
+    fields = DISCOVERY_SOURCE_CONFIG_FIELDS.get(platform_key, [])
+    allowed_keys = {field['key'] for field in fields}
+
+    config = _load_source_config(source)
+    for key in allowed_keys:
+        if key not in incoming_config:
+            continue
+        value = str(incoming_config.get(key, '')).strip()
+        if value:
+            config[key] = value
+        else:
+            config.pop(key, None)
+
+    if 'is_enabled' in data:
+        source.is_enabled = bool(data.get('is_enabled'))
+    source.config_json = json.dumps(config, ensure_ascii=False, separators=(',', ':'))
+    db.session.commit()
+
+    return jsonify(_source_to_response(source))
 
 
 @discovery_bp.route('/api/discovery/search', methods=['POST'])
@@ -58,6 +127,16 @@ def search():
     connector = ConnectorRegistry.get(platform)
     if not connector:
         return jsonify({'error': '该平台暂不支持搜索'}), 400
+
+    config_state = _source_config_state(source)
+    if config_state['config_fields'] and not config_state['is_configured']:
+        return jsonify({
+            'code': 'missing_config',
+            'error': f'{source.display_name} API Key 未配置',
+            'message': f'{source.display_name} 需要先配置 API Key 才能搜索',
+            'platform_key': source.platform_key,
+            'config_fields': config_state['config_fields'],
+        }), 400
 
     dq = DiscoveryQuery(
         query_type='keyword',

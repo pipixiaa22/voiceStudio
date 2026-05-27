@@ -36,6 +36,7 @@ import { videoApi } from '../../api'
 
 const props = defineProps({
   selectedTemplate: Object,
+  preferredTemplateKey: String,
 })
 
 const emit = defineEmits(['update:selectedTemplate', 'next'])
@@ -47,13 +48,25 @@ onMounted(async () => {
   try {
     const response = await videoApi.getTemplates()
     templates.value = response.data
-    if (!selected.value && templates.value.length > 0) {
-      selectTemplate(templates.value[0])
-    }
+    chooseInitialTemplate()
   } catch (error) {
     console.error('加载模板失败:', error)
   }
 })
+
+watch(() => props.preferredTemplateKey, chooseInitialTemplate)
+
+function chooseInitialTemplate() {
+  if (!templates.value.length) return
+  const preferred = props.preferredTemplateKey
+    ? templates.value.find(template => template.template_key === props.preferredTemplateKey)
+    : null
+  if (preferred) {
+    selectTemplate(preferred)
+    return
+  }
+  if (!selected.value) selectTemplate(templates.value[0])
+}
 
 const selectTemplate = (template) => {
   selected.value = template

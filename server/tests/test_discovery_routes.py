@@ -1,6 +1,6 @@
 import json
 from unittest.mock import patch, MagicMock
-from server.models import DiscoveryItem, db
+from server.models import DiscoveryItem, DiscoverySource, db
 
 
 def test_get_sources(client):
@@ -11,6 +11,74 @@ def test_get_sources(client):
     platform_keys = [s['platform_key'] for s in sources]
     assert 'manual' in platform_keys
     assert 'youtube' in platform_keys
+
+
+def test_get_sources_reports_config_state_without_secret(client, app):
+    with app.app_context():
+        source = DiscoverySource.query.filter_by(platform_key='youtube').first()
+        source.config_json = '{"api_key": "secret-youtube-key"}'
+        db.session.commit()
+
+    resp = client.get('/api/discovery/sources')
+
+    assert resp.status_code == 200
+    youtube = next(s for s in resp.get_json() if s['platform_key'] == 'youtube')
+    assert youtube['needs_api_key'] is True
+    assert youtube['is_configured'] is True
+    assert youtube['config_fields'][0]['key'] == 'api_key'
+    assert youtube['config'] == {}
+
+
+def test_update_source_config_saves_required_api_key(client, app):
+    resp = client.put('/api/discovery/sources/youtube/config', json={
+        'config': {'api_key': 'new-youtube-key'},
+        'is_enabled': True,
+    })
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['platform_key'] == 'youtube'
+    assert data['is_configured'] is True
+    assert data['config'] == {}
+
+    with app.app_context():
+        source = DiscoverySource.query.filter_by(platform_key='youtube').first()
+        assert json.loads(source.config_json) == {'api_key': 'new-youtube-key'}
+        assert source.is_enabled is True
+
+
+def test_update_source_config_preserves_existing_key_when_omitted(client, app):
+    with app.app_context():
+        source = DiscoverySource.query.filter_by(platform_key='youtube').first()
+        source.config_json = '{"api_key": "existing-youtube-key"}'
+        db.session.commit()
+
+    resp = client.put('/api/discovery/sources/youtube/config', json={
+        'is_enabled': False,
+        'config': {},
+    })
+
+    assert resp.status_code == 200
+    with app.app_context():
+        source = DiscoverySource.query.filter_by(platform_key='youtube').first()
+        assert json.loads(source.config_json) == {'api_key': 'existing-youtube-key'}
+        assert source.is_enabled is False
+
+
+@patch('server.routes.discovery.ConnectorRegistry.get')
+def test_search_youtube_missing_api_key_returns_config_hint(mock_get, client):
+    mock_get.return_value = MagicMock()
+
+    resp = client.post('/api/discovery/search', json={
+        'platform': 'youtube',
+        'query': '修仙小说',
+    })
+
+    assert resp.status_code == 400
+    data = resp.get_json()
+    assert data['code'] == 'missing_config'
+    assert data['platform_key'] == 'youtube'
+    assert 'YouTube' in data['message']
 
 
 def test_search_missing_platform(client):
@@ -37,7 +105,12 @@ def test_search_disabled_platform(client):
 
 
 @patch('server.routes.discovery.ConnectorRegistry.get')
-def test_search_success(mock_get, client):
+def test_search_success(mock_get, client, app):
+    with app.app_context():
+        source = DiscoverySource.query.filter_by(platform_key='youtube').first()
+        source.config_json = '{"api_key": "test-youtube-key"}'
+        db.session.commit()
+
     mock_connector = MagicMock()
     mock_connector.search.return_value = [
         {

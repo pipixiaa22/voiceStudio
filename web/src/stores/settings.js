@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 
 const ttsKey = ref(localStorage.getItem('mimo_tts_key') || '')
 const llmKey = ref(localStorage.getItem('mimo_llm_key') || '')
@@ -16,6 +16,9 @@ const DEFAULT_PROMPT = `你是一个专业的语音合成音色描述润色专�
 7. 使用与用户相同的语言（中文描述用中文润色，英文描述用英文润色）
 
 只输出润色后的音色描述，不要输出解释或额外内容。`
+
+const hasTtsKey = computed(() => Boolean(ttsKey.value?.trim()))
+const hasLlmKey = computed(() => Boolean(llmKey.value?.trim()))
 
 export function useSettings() {
   const loadFromStorage = () => {
@@ -37,6 +40,8 @@ export function useSettings() {
     ttsKey,
     llmKey,
     systemPrompt,
+    hasTtsKey,
+    hasLlmKey,
     defaultPrompt: DEFAULT_PROMPT,
     loadFromStorage,
     saveAll,
