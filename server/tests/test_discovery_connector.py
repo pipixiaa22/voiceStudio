@@ -113,3 +113,74 @@ def test_manual_url_resolve_unknown():
     assert result['platform_key'] == 'manual'
     assert result['source_url'] == 'https://example.com/video/123'
     assert result.get('source_id') is None
+
+
+from unittest.mock import patch, MagicMock
+from server.services.discovery.youtube import YoutubeConnector, _parse_duration
+
+
+def test_parse_duration():
+    assert _parse_duration('PT1M30S') == 90
+    assert _parse_duration('PT2H1M') == 7260
+    assert _parse_duration('PT30S') == 30
+    assert _parse_duration('PT1H') == 3600
+    assert _parse_duration('') is None
+    assert _parse_duration(None) is None
+
+
+def test_youtube_not_available_without_key():
+    conn = YoutubeConnector()
+    with patch('server.services.discovery.youtube.DiscoverySource') as mock_src:
+        mock_src.query.filter_by.return_value.first.return_value = None
+        assert conn.is_available() is False
+
+
+def test_youtube_search_raises_without_key():
+    conn = YoutubeConnector()
+    with patch('server.services.discovery.youtube.DiscoverySource') as mock_src:
+        mock_src.query.filter_by.return_value.first.return_value = None
+        with pytest.raises(ValueError, match='API key'):
+            conn.search('test', 10)
+
+
+@patch('server.services.discovery.youtube.requests.get')
+def test_youtube_search_success(mock_get):
+    search_resp = MagicMock(ok=True)
+    search_resp.json.return_value = {
+        'items': [{
+            'id': {'videoId': 'abc123'},
+            'snippet': {
+                'title': '测试修仙视频',
+                'channelTitle': '测试频道',
+                'publishedAt': '2026-05-20T00:00:00Z',
+                'thumbnails': {'high': {'url': 'https://img.youtube.com/vi/abc123/hqdefault.jpg'}},
+                'tags': ['修仙'],
+            },
+        }],
+    }
+
+    detail_resp = MagicMock(ok=True)
+    detail_resp.json.return_value = {
+        'items': [{
+            'id': 'abc123',
+            'snippet': {
+                'title': '测试修仙视频',
+                'channelTitle': '测试频道',
+                'publishedAt': '2026-05-20T00:00:00Z',
+                'thumbnails': {'high': {'url': 'https://img.youtube.com/vi/abc123/hqdefault.jpg'}},
+                'tags': ['修仙'],
+            },
+            'statistics': {'viewCount': '10000', 'likeCount': '500', 'commentCount': '30'},
+            'contentDetails': {'duration': 'PT2M30S'},
+        }],
+    }
+
+    mock_get.side_effect = [search_resp, detail_resp]
+
+    conn = YoutubeConnector(api_key='test-key')
+    results = conn.search('修仙小说', 10)
+
+    assert len(results) == 1
+    assert results[0]['title'] == '测试修仙视频'
+    assert results[0]['stats']['views'] == 10000
+    assert results[0]['duration'] == 150
