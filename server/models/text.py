@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 from server.models.base import db
 
@@ -15,6 +16,7 @@ class Text(db.Model):
     title = db.Column(db.String(200), nullable=False, default='未命名')
     content = db.Column(db.Text, nullable=False, default='')
     folder_id = db.Column(db.Integer, db.ForeignKey('folders.id'), nullable=True)
+    source_context_json = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc),
                            onupdate=lambda: datetime.now(timezone.utc))
@@ -30,6 +32,7 @@ class Text(db.Model):
             'folder_id': self.folder_id,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'source_context': json.loads(self.source_context_json) if self.source_context_json else None,
             'tags': [tag.to_dict() for tag in self.tags],
         }
 

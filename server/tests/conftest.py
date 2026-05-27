@@ -13,6 +13,8 @@ def app():
         _db.create_all()
         from server.services.video_template import seed_builtin_templates
         seed_builtin_templates()
+        from server.services.discovery_seed import seed_discovery_sources
+        seed_discovery_sources()
         yield app
         _db.drop_all()
 

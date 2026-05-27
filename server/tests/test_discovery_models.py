@@ -7,7 +7,7 @@ from server.models import (
 
 def test_discovery_source_create(app, db):
     with app.app_context():
-        src = DiscoverySource(platform_key='youtube', display_name='YouTube')
+        src = DiscoverySource(platform_key='test_platform', display_name='Test Platform')
         db.session.add(src)
         db.session.commit()
         assert src.id is not None
@@ -17,13 +17,13 @@ def test_discovery_source_create(app, db):
 def test_discovery_source_to_dict(app, db):
     with app.app_context():
         src = DiscoverySource(
-            platform_key='youtube', display_name='YouTube',
+            platform_key='test_platform_2', display_name='Test Platform 2',
             config_json='{"api_key": "test"}',
         )
         db.session.add(src)
         db.session.commit()
         d = src.to_dict()
-        assert d['platform_key'] == 'youtube'
+        assert d['platform_key'] == 'test_platform_2'
         assert d['config'] == {'api_key': 'test'}
 
 
