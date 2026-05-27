@@ -60,3 +60,56 @@ def test_connector_is_available():
 def test_cannot_instantiate_abstract():
     with pytest.raises(TypeError):
         DiscoveryConnector()
+
+
+from server.services.discovery.manual_url import ManualUrlConnector, _detect_platform
+
+
+def test_detect_platform_youtube():
+    platform, vid = _detect_platform('https://www.youtube.com/watch?v=dQw4w9WgXcQ')
+    assert platform == 'youtube'
+    assert vid == 'dQw4w9WgXcQ'
+
+
+def test_detect_platform_youtube_short():
+    platform, vid = _detect_platform('https://youtu.be/dQw4w9WgXcQ')
+    assert platform == 'youtube'
+    assert vid == 'dQw4w9WgXcQ'
+
+
+def test_detect_platform_bilibili():
+    platform, vid = _detect_platform('https://www.bilibili.com/video/BV1xx411c7mD')
+    assert platform == 'bilibili'
+    assert vid == 'BV1xx411c7mD'
+
+
+def test_detect_platform_douyin():
+    platform, vid = _detect_platform('https://www.douyin.com/video/7123456789')
+    assert platform == 'douyin'
+    assert vid == '7123456789'
+
+
+def test_detect_platform_kuaishou():
+    platform, vid = _detect_platform('https://www.kuaishou.com/short-video/abc123')
+    assert platform == 'kuaishou'
+    assert vid == 'abc123'
+
+
+def test_detect_platform_unknown():
+    platform, vid = _detect_platform('https://example.com/video/123')
+    assert platform is None
+    assert vid is None
+
+
+def test_manual_url_search_raises():
+    conn = ManualUrlConnector()
+    with pytest.raises(NotImplementedError):
+        conn.search('test', 10)
+
+
+def test_manual_url_resolve_unknown():
+    conn = ManualUrlConnector()
+    result = conn.resolve_url('https://example.com/video/123')
+    assert result['platform_key'] == 'manual'
+    assert result['source_url'] == 'https://example.com/video/123'
+    assert result.get('source_id') is None
