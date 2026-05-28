@@ -6,17 +6,45 @@
           <span class="source-label">{{ item.platformName }}</span>
           <h2>{{ item.title }}</h2>
         </div>
-        <a-tooltip title="打开原链接">
-          <a-button class="icon-btn" :href="item.sourceUrl" target="_blank">
-            <template #icon>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                <polyline points="15 3 21 3 21 9" />
-                <line x1="10" y1="14" x2="21" y2="3" />
-              </svg>
-            </template>
-          </a-button>
-        </a-tooltip>
+        <div class="head-actions">
+          <a-tooltip :title="item.favorite ? '取消收藏' : '收藏'">
+            <a-button class="icon-btn" @click="$emit('toggle-favorite', item.id)">
+              <template #icon>
+                <svg viewBox="0 0 24 24" :fill="item.favorite ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2">
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                </svg>
+              </template>
+            </a-button>
+          </a-tooltip>
+          <a-tooltip title="打开原链接">
+            <a-button class="icon-btn" :href="item.sourceUrl" target="_blank">
+              <template #icon>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                  <polyline points="15 3 21 3 21 9" />
+                  <line x1="10" y1="14" x2="21" y2="3" />
+                </svg>
+              </template>
+            </a-button>
+          </a-tooltip>
+          <a-popconfirm
+            title="确定删除此采集记录？"
+            ok-text="删除"
+            cancel-text="取消"
+            @confirm="$emit('delete-item', item.id)"
+          >
+            <a-tooltip title="删除">
+              <a-button class="icon-btn danger-btn">
+                <template #icon>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                </template>
+              </a-button>
+            </a-tooltip>
+          </a-popconfirm>
+        </div>
       </div>
 
       <a-tabs :active-key="activeTab" class="analysis-tabs" @change="$emit('tab-change', $event)">
@@ -127,6 +155,8 @@ defineEmits([
   'import-text',
   'edit-text',
   'open-video',
+  'toggle-favorite',
+  'delete-item',
 ])
 
 const scores = computed(() => props.item ? [
@@ -189,6 +219,12 @@ const analysisSteps = ['读取元数据', '计算相关性', '识别视频形态
   line-height: 1.45;
 }
 
+.head-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
 .icon-btn {
   width: 32px !important;
   height: 32px !important;
@@ -198,6 +234,11 @@ const analysisSteps = ['读取元数据', '计算相关性', '识别视频形态
 .icon-btn svg {
   width: 14px;
   height: 14px;
+}
+
+.danger-btn:hover {
+  color: var(--danger, #e74c3c) !important;
+  border-color: var(--danger, #e74c3c) !important;
 }
 
 .analysis-tabs {

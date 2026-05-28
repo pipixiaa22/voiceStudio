@@ -25,6 +25,8 @@
         @restore-query="handleRestoreQuery"
         @toggle-favorite-filter="discovery.setFavoriteFilter"
         @set-status-filter="discovery.setStatusFilter"
+        @delete-query="handleDeleteQuery"
+        @clear-queries="handleClearQueries"
       />
 
       <DiscoveryResultList
@@ -55,6 +57,8 @@
         @import-text="handleImportText"
         @edit-text="handleEditText"
         @open-video="handleOpenVideo"
+        @toggle-favorite="handleToggleFavorite"
+        @delete-item="handleDeleteItem"
       />
     </div>
 
@@ -222,6 +226,33 @@ const handleToggleFavorite = async (id) => {
     await discovery.toggleFavorite(id)
   } catch (error) {
     message.error(error.response?.data?.error || '收藏状态更新失败')
+  }
+}
+
+const handleDeleteItem = async (id) => {
+  try {
+    await discovery.deleteItem(id)
+    message.success('已删除')
+  } catch (error) {
+    message.error(error.response?.data?.error || '删除失败')
+  }
+}
+
+const handleDeleteQuery = async (queryId) => {
+  try {
+    await discovery.deleteQuery(queryId)
+    message.success('已删除查询记录')
+  } catch (error) {
+    message.error(error.response?.data?.error || '删除失败')
+  }
+}
+
+const handleClearQueries = async () => {
+  try {
+    await discovery.clearQueries()
+    message.success('已清空历史记录')
+  } catch (error) {
+    message.error(error.response?.data?.error || '清空失败')
   }
 }
 

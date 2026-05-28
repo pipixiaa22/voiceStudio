@@ -108,6 +108,10 @@ export const discoveryApi = {
   analyzeItem: (id, data) => api.post(`/discovery/items/${id}/analyze`, data),
   createText: (id, data) => api.post(`/discovery/items/${id}/create-text`, data),
   toggleFavorite: (id) => api.put(`/discovery/items/${id}/favorite`),
+  deleteItem: (id) => api.delete(`/discovery/items/${id}`),
+  deleteQuery: (id) => api.delete(`/discovery/queries/${id}`),
+  clearQueries: () => api.delete('/discovery/queries'),
+  clearItems: () => api.delete('/discovery/items'),
 }
 
 export const modelProvidersApi = {

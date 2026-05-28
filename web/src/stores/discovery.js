@@ -237,6 +237,54 @@ export const useDiscoveryStore = defineStore('discovery', {
         this._refreshResults()
       }
     },
+    async deleteItem(id) {
+      try {
+        await discoveryApi.deleteItem(id)
+        this.items = this.items.filter(entry => entry.id !== id)
+        if (this.selectedId === id) this.selectedId = null
+        this._refreshResults()
+      } catch (error) {
+        this.error = error.response?.data?.error || '删除失败'
+        throw error
+      }
+    },
+    async deleteQuery(queryId) {
+      try {
+        await discoveryApi.deleteQuery(queryId)
+        this.history = this.history.filter(entry => entry.id !== queryId)
+        // Reload items since associated items were also deleted
+        const { data } = await discoveryApi.listItems({ per_page: 50 })
+        this.items = []
+        this._upsertItems(data?.items || [])
+        this._refreshResults()
+      } catch (error) {
+        this.error = error.response?.data?.error || '删除查询记录失败'
+        throw error
+      }
+    },
+    async clearQueries() {
+      try {
+        await discoveryApi.clearQueries()
+        this.history = []
+        this.items = []
+        this.results = []
+        this.selectedId = null
+      } catch (error) {
+        this.error = error.response?.data?.error || '清空历史失败'
+        throw error
+      }
+    },
+    async clearItems() {
+      try {
+        await discoveryApi.clearItems()
+        this.items = []
+        this.results = []
+        this.selectedId = null
+      } catch (error) {
+        this.error = error.response?.data?.error || '清空采集记录失败'
+        throw error
+      }
+    },
     setFavoriteFilter(value) {
       this.favoriteOnly = value
       this._refreshResults()

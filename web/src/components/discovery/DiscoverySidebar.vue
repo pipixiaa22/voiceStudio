@@ -18,19 +18,38 @@
     <section class="side-section">
       <div class="section-head">
         <span>历史查询</span>
-        <small>{{ history.length }}</small>
+        <div class="section-actions">
+          <small>{{ history.length }}</small>
+          <button
+            v-if="history.length"
+            class="clear-btn"
+            type="button"
+            title="清空历史"
+            @click="$emit('clear-queries')"
+          >清空</button>
+        </div>
       </div>
       <div v-if="history.length" class="history-list">
-        <button
+        <div
           v-for="entry in history"
           :key="entry.id"
           class="history-item"
-          type="button"
-          @click="$emit('restore-query', entry)"
         >
-          <span>{{ entry.query }}</span>
-          <small>{{ platformLabel(entry.platform) }} · {{ entry.resultCount }} 条</small>
-        </button>
+          <button
+            class="history-main"
+            type="button"
+            @click="$emit('restore-query', entry)"
+          >
+            <span>{{ entry.query }}</span>
+            <small>{{ platformLabel(entry.platform) }} · {{ entry.resultCount }} 条</small>
+          </button>
+          <button
+            class="delete-btn"
+            type="button"
+            title="删除"
+            @click.stop="$emit('delete-query', entry.id)"
+          >×</button>
+        </div>
       </div>
       <div v-else class="empty-note">搜索一次后会出现在这里</div>
     </section>
@@ -76,7 +95,7 @@ const props = defineProps({
   statusFilter: { type: String, default: 'all' },
 })
 
-defineEmits(['use-keyword', 'restore-query', 'toggle-favorite-filter', 'set-status-filter'])
+defineEmits(['use-keyword', 'restore-query', 'toggle-favorite-filter', 'set-status-filter', 'delete-query', 'clear-queries'])
 
 const keywords = ['修仙小说 一张图', '仙帝重生', '废柴逆袭', '宗门 天劫', '女帝 师尊', '系统流 小师妹']
 
@@ -161,9 +180,77 @@ const statusOptions = computed(() => [
 }
 
 .history-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.history-main {
+  flex: 1;
   display: grid;
   gap: 3px;
   padding: 9px 10px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  border-radius: var(--radius-md);
+  min-width: 0;
+}
+
+.history-main:hover {
+  background: var(--surface);
+}
+
+.delete-btn {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--text-subtle);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.history-item:hover .delete-btn {
+  opacity: 1;
+}
+
+.delete-btn:hover {
+  background: var(--surface);
+  color: var(--danger, #e74c3c);
+}
+
+.section-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.clear-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-subtle);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.clear-btn:hover {
+  background: var(--surface);
+  color: var(--danger, #e74c3c);
 }
 
 .history-item span {

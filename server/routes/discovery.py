@@ -412,3 +412,47 @@ def delete_item(item_id):
     db.session.delete(item)
     db.session.commit()
     return '', 204
+
+
+@discovery_bp.route('/api/discovery/queries/<int:query_id>', methods=['DELETE'])
+def delete_query(query_id):
+    query = db.session.get(DiscoveryQuery, query_id)
+    if not query:
+        return jsonify({'error': '查询记录不存在'}), 404
+    # Delete associated items and their analyses first
+    items = db.session.execute(
+        select(DiscoveryItem).where(DiscoveryItem.query_id == query_id)
+    ).scalars().all()
+    for item in items:
+        if item.analysis:
+            db.session.delete(item.analysis)
+        db.session.delete(item)
+    db.session.delete(query)
+    db.session.commit()
+    return '', 204
+
+
+@discovery_bp.route('/api/discovery/queries', methods=['DELETE'])
+def clear_queries():
+    # Delete all items and analyses first
+    items = db.session.execute(select(DiscoveryItem)).scalars().all()
+    for item in items:
+        if item.analysis:
+            db.session.delete(item.analysis)
+        db.session.delete(item)
+    # Delete all queries
+    db.session.execute(DiscoveryQuery.__table__.delete())
+    db.session.commit()
+    return '', 204
+
+
+@discovery_bp.route('/api/discovery/items', methods=['DELETE'])
+def clear_items():
+    """Delete all discovery items and their analyses"""
+    items = db.session.execute(select(DiscoveryItem)).scalars().all()
+    for item in items:
+        if item.analysis:
+            db.session.delete(item.analysis)
+        db.session.delete(item)
+    db.session.commit()
+    return '', 204
