@@ -104,7 +104,7 @@ def analyze_item(item: dict, score_result: dict, api_key: str = '') -> dict:
     )
 
     messages = [{'role': 'user', 'content': prompt}]
-    result_text = provider.complete(messages, model, system_prompt=ANALYSIS_SYSTEM_PROMPT, max_tokens=2000)
+    result_text = provider.complete(messages, model, system_prompt=ANALYSIS_SYSTEM_PROMPT, max_tokens=2000, timeout=120)
 
     try:
         result = json.loads(result_text)

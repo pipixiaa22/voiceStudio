@@ -42,6 +42,7 @@ class OpenAICompatibleProvider(ModelProvider):
     def complete(self, messages: list[dict], model: str, **options) -> str:
         system_prompt = options.get('system_prompt', '')
         max_tokens = options.get('max_tokens', 1024)
+        timeout = options.get('timeout', 60)
 
         url = f'{self.base_url.rstrip("/")}/chat/completions'
         payload = {
@@ -59,7 +60,7 @@ class OpenAICompatibleProvider(ModelProvider):
                 'Content-Type': 'application/json',
             },
             json=payload,
-            timeout=30,
+            timeout=timeout,
         )
         if resp.status_code != 200:
             raise ValueError(f'API 返回错误: {resp.status_code}')

@@ -84,6 +84,7 @@ class MimoProvider(ModelProvider):
     def complete(self, messages: list[dict], model: str, **options) -> str:
         system_prompt = options.get('system_prompt', '')
         max_tokens = options.get('max_tokens', 1024)
+        timeout = options.get('timeout', 60)
 
         payload = {
             'model': model or 'mimo-v2.5-pro',
@@ -97,7 +98,7 @@ class MimoProvider(ModelProvider):
             MIMO_LLM_URL,
             headers={'api-key': self.api_key, 'Content-Type': 'application/json'},
             json=payload,
-            timeout=30,
+            timeout=timeout,
         )
         if resp.status_code != 200:
             raise ValueError(f'MiMo API 返回错误: {resp.status_code}')
