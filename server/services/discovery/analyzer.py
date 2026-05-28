@@ -3,39 +3,22 @@ from server.services.model_registry import ModelRegistry
 
 ANALYSIS_SYSTEM_PROMPT = '你是一个修仙短视频小说的选题分析师。根据热门视频的元数据，分析其成功要素，并生成一个原创脚本。所有输出必须是合法的 JSON 格式。'
 
-ANALYSIS_PROMPT_TEMPLATE = '''根据以下热门视频的元数据，分析其成功要素并生成原创脚本。
+ANALYSIS_PROMPT_TEMPLATE = '''分析以下视频元数据，生成原创脚本。直接输出JSON，不要其他内容。
 
-## 视频信息
-- 标题：{title}
-- 平台：{platform}
-- 时长：{duration}秒
-- 播放量：{views}
-- 点赞：{likes}
-- 评论：{comments}
-- 标签：{tags}
+视频：{title} | {platform} | {duration}秒 | 播放{views} | 赞{likes} | 评{comments}
+标签：{tags}
+评分：{reasons}
 
-## 评分理由
-{reasons}
-
-## 要求
-1. 分析标题套路（爽点/冲突/身份反转）
-2. 分析开头钩子（前3秒要抛出的危机或反差）
-3. 提取剧情骨架（主角身份、压迫者、金手指、第一次反击、悬念）
-4. 建议字幕节奏（每句12-20字，短句优先）
-5. 生成一个原创标题（不要复制原标题，要换人物/换冲突/换世界观）
-6. 生成原创脚本正文（分段，每段对应一个字幕时间段，用换行分隔）
-7. 推荐视频参数
-
-以 JSON 格式输出，字段如下：
+JSON字段：
 {{
-  "title_pattern": "标题套路分析",
-  "hook": "开头钩子描述",
+  "title_pattern": "标题套路",
+  "hook": "前3秒钩子",
   "plot_skeleton": "剧情骨架",
-  "subtitle_rhythm": "字幕节奏建议",
+  "subtitle_rhythm": "字幕节奏",
   "generated_title": "原创标题",
-  "generated_content": "原创脚本正文",
+  "generated_content": "原创脚本（分段，每段15-20字）",
   "recommended_template": "xianxia_narration",
-  "recommended_voice_desc": "推荐声线描述",
+  "recommended_voice_desc": "声线",
   "recommended_max_chars": 16
 }}'''
 
@@ -67,6 +50,28 @@ def _get_llm_config() -> tuple[str, str, str, str]:
             return (cp.provider_key, '', cp.base_url, llm_model.get('model_key', ''))
 
     return DEFAULT_PROVIDER, '', '', DEFAULT_MODEL
+
+
+def _try_fix_truncated_json(text: str) -> dict:
+    """尝试修复被截断的 JSON 响应"""
+    import re
+    text = text.strip()
+
+    # 提取已有的 key-value 对
+    result = {}
+    # 匹配 "key": "value" 模式（value 可能含换行）
+    for match in re.finditer(r'"(\w+)"\s*:\s*"((?:[^"\\]|\\.)*)"', text):
+        result[match.group(1)] = match.group(2)
+
+    # 匹配 "key": number 模式
+    for match in re.finditer(r'"(\w+)"\s*:\s*(\d+(?:\.\d+)?)', text):
+        if match.group(1) not in result:
+            result[match.group(1)] = float(match.group(2)) if '.' in match.group(2) else int(match.group(2))
+
+    if result:
+        return result
+
+    raise ValueError(f'LLM 返回的内容无法解析为 JSON: {text[:200]}')
 
 
 def analyze_item(item: dict, score_result: dict, api_key: str = '') -> dict:
@@ -104,7 +109,7 @@ def analyze_item(item: dict, score_result: dict, api_key: str = '') -> dict:
     )
 
     messages = [{'role': 'user', 'content': prompt}]
-    result_text = provider.complete(messages, model, system_prompt=ANALYSIS_SYSTEM_PROMPT, max_tokens=2000, timeout=120)
+    result_text = provider.complete(messages, model, system_prompt=ANALYSIS_SYSTEM_PROMPT, max_tokens=3000, timeout=120)
 
     try:
         result = json.loads(result_text)
@@ -112,13 +117,24 @@ def analyze_item(item: dict, score_result: dict, api_key: str = '') -> dict:
         import re
         match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', result_text, re.DOTALL)
         if match:
-            result = json.loads(match.group(1))
+            try:
+                result = json.loads(match.group(1))
+            except json.JSONDecodeError:
+                result = _try_fix_truncated_json(match.group(1))
         else:
             start = result_text.find('{')
             end = result_text.rfind('}')
             if start >= 0 and end > start:
-                result = json.loads(result_text[start:end + 1])
+                try:
+                    result = json.loads(result_text[start:end + 1])
+                except json.JSONDecodeError:
+                    result = _try_fix_truncated_json(result_text[start:end + 1])
             else:
-                raise ValueError(f'LLM 返回的内容无法解析为 JSON: {result_text[:200]}')
+                result = _try_fix_truncated_json(result_text)
+
+    if not isinstance(result, dict):
+        raise ValueError(f'LLM 返回的内容无法解析为 JSON: {result_text[:200]}')
+
+    return result
 
     return result
