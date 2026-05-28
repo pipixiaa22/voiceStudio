@@ -323,6 +323,8 @@ def get_item(item_id):
 @discovery_bp.route('/api/discovery/items/<int:item_id>/analyze', methods=['POST'])
 def analyze(item_id):
     item = _get_item_or_404(item_id)
+    data = request.get_json(silent=True) or {}
+    api_key = data.get('api_key', '')
 
     score_result = {
         'xianxia_score': item.analysis.xianxia_score if item.analysis else 0,
@@ -334,7 +336,7 @@ def analyze(item_id):
     item_dict = item.to_dict()
 
     try:
-        llm_result = analyze_item(item_dict, score_result)
+        llm_result = analyze_item(item_dict, score_result, api_key=api_key)
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
     except Exception as e:

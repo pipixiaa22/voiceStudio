@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { discoveryApi, textsApi } from '../api'
+import { useSettings } from './settings'
 import {
   buildVideoPrefill,
   filterDiscoveryItems,
@@ -197,7 +198,8 @@ export const useDiscoveryStore = defineStore('discovery', {
       this.analyzing = true
       this.error = ''
       try {
-        const { data } = await discoveryApi.analyzeItem(id)
+        const { llmKey } = useSettings()
+        const { data } = await discoveryApi.analyzeItem(id, { api_key: llmKey.value || '' })
         const updated = normalizeDiscoveryAnalysis(item, data)
         this.items = this.items.map(entry => entry.id === id ? updated : entry)
         if (updated.scriptDraft) this.scriptDrafts[id] = updated.scriptDraft

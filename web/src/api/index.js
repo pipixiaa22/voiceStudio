@@ -105,7 +105,7 @@ export const discoveryApi = {
   listItems: (params) => api.get('/discovery/items', { params }),
   listQueries: () => api.get('/discovery/queries'),
   resolveUrl: (data) => api.post('/discovery/resolve-url', data),
-  analyzeItem: (id) => api.post(`/discovery/items/${id}/analyze`),
+  analyzeItem: (id, data) => api.post(`/discovery/items/${id}/analyze`, data),
   createText: (id, data) => api.post(`/discovery/items/${id}/create-text`, data),
   toggleFavorite: (id) => api.put(`/discovery/items/${id}/favorite`),
 }

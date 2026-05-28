@@ -69,10 +69,14 @@ def _get_llm_config() -> tuple[str, str, str, str]:
     return DEFAULT_PROVIDER, '', '', DEFAULT_MODEL
 
 
-def analyze_item(item: dict, score_result: dict) -> dict:
+def analyze_item(item: dict, score_result: dict, api_key: str = '') -> dict:
     """调用 LLM 分析视频并生成原创脚本"""
     registry = ModelRegistry()
-    provider_key, api_key, base_url, model = _get_llm_config()
+
+    if api_key:
+        provider_key, _, base_url, model = _get_llm_config()
+    else:
+        provider_key, api_key, base_url, model = _get_llm_config()
 
     if not api_key:
         raise ValueError('LLM API key 未配置。请在模型设置中配置 API key。')
