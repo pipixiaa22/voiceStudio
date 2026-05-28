@@ -7,6 +7,31 @@
       description="这里保存热点采集所需的平台 API Key。密钥只保存在本地后端数据库，列表中不会回显明文。"
     />
 
+    <div class="source-section">
+      <div class="source-header">
+        <div>
+          <div class="source-title">视频分析 LLM</div>
+          <div class="source-meta">
+            <span>用于结构分析和原创脚本生成</span>
+            <span v-if="discoveryLlmKey">已配置</span>
+            <span v-else>未配置（将复用音色描述优化的 API Key）</span>
+          </div>
+        </div>
+      </div>
+      <div class="field-row">
+        <label>API Key</label>
+        <a-input-password
+          v-model:value="discoveryLlmKey"
+          placeholder="留空则复用音色描述优化的 API Key"
+        />
+      </div>
+      <div class="source-actions">
+        <a-button size="small" type="primary" @click="saveDiscoveryLlmKey">
+          保存
+        </a-button>
+      </div>
+    </div>
+
     <a-spin :spinning="loading">
       <div class="source-list">
         <div v-for="source in configurableSources" :key="source.platform_key" class="source-section">
@@ -70,6 +95,7 @@ const drafts = reactive({})
 const loading = ref(false)
 const saving = ref('')
 const loaded = ref(false)
+const discoveryLlmKey = ref(localStorage.getItem('mimo_discovery_llm_key') || '')
 
 const configurableSources = computed(() => (
   sources.value.filter(source => source.config_fields?.length)
@@ -132,8 +158,16 @@ const saveSource = async (source) => {
 }
 
 watch(() => props.active, (active) => {
-  if (active) loadSources()
-}, { immediate: true })
+  if (active) {
+    loadSources()
+    discoveryLlmKey.value = localStorage.getItem('mimo_discovery_llm_key') || ''
+  }
+})
+
+const saveDiscoveryLlmKey = () => {
+  localStorage.setItem('mimo_discovery_llm_key', discoveryLlmKey.value.trim())
+  message.success('视频分析 LLM API Key 已保存')
+}
 </script>
 
 <style scoped>

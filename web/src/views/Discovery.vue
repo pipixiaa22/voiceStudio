@@ -77,6 +77,7 @@ import { message } from 'ant-design-vue'
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDiscoveryStore } from '../stores/discovery'
+import { useSettings } from '../stores/settings'
 import DiscoverySearchBar from '../components/discovery/DiscoverySearchBar.vue'
 import DiscoverySidebar from '../components/discovery/DiscoverySidebar.vue'
 import DiscoveryResultList from '../components/discovery/DiscoveryResultList.vue'
@@ -85,6 +86,11 @@ import VideoGenerateModal from '../components/video/VideoGenerateModal.vue'
 
 const router = useRouter()
 const discovery = useDiscoveryStore()
+const { llmKey } = useSettings()
+
+const getDiscoveryLlmKey = () => {
+  return localStorage.getItem('mimo_discovery_llm_key')?.trim() || llmKey.value || ''
+}
 
 const {
   results,
@@ -191,7 +197,7 @@ const handleClearFilters = () => {
 
 const handleGenerateScript = async (id, options = {}) => {
   try {
-    await discovery.generateScript(id, options)
+    await discovery.generateScript(id, { ...options, api_key: getDiscoveryLlmKey() })
     message.success('原创脚本已生成')
   } catch (error) {
     message.error(error.response?.data?.error || '原创脚本生成失败')
@@ -204,7 +210,7 @@ const handleUpdateScript = (id, draft) => {
 
 const handleAnalyze = async (id) => {
   try {
-    await discovery.analyzeItem(id)
+    await discovery.analyzeItem(id, { api_key: getDiscoveryLlmKey() })
     message.success('结构分析已完成')
   } catch (error) {
     message.error(error.response?.data?.error || '分析失败')
