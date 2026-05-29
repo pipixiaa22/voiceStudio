@@ -96,6 +96,33 @@ export const useVoiceWorkflowsStore = defineStore('voiceWorkflows', {
         })
       }
     },
+    addSegment(text = '', extra = {}) {
+      const maxOrder = this.segments.reduce((max, s) => Math.max(max, s.order_index || 0), 0)
+      const id = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+      const segment = {
+        id,
+        workflow_id: this.workflow.id,
+        order_index: maxOrder + 1,
+        text,
+        node_x: 80 + this.segments.length * 240,
+        node_y: 120 + (this.segments.length % 2) * 80,
+        emotion: 'neutral',
+        intensity: 0.5,
+        rate: 1.0,
+        pitch: 0,
+        volume_db: 0,
+        pause_before_ms: 0,
+        pause_after_ms: 250,
+        transition: 'normal',
+        delivery_instruction: '',
+        voice_profile_id: null,
+        audio_status: 'missing',
+        ...extra,
+      }
+      this.segments.push(segment)
+      this.selectedSegmentId = id
+      return segment
+    },
     selectSegment(id) {
       this.selectedSegmentId = id
     },

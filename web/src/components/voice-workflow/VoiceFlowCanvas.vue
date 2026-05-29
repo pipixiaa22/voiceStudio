@@ -31,7 +31,7 @@ const props = defineProps({
   edges: { type: Array, default: () => [] },
 })
 const emit = defineEmits(['select', 'move'])
-const { onNodesChange } = useVueFlow()
+const { onNodesChange, setNodes, fitView } = useVueFlow()
 
 const flowNodes = computed(() => props.segments.map(segment => ({
   id: String(segment.id),
@@ -47,17 +47,27 @@ const flowEdges = computed(() => props.edges.map(edge => ({
   animated: false,
 })))
 
-const handleNodeClick = ({ node }) => emit('select', Number(node.id))
+const handleNodeClick = ({ node }) => emit('select', Number(node.id) || node.id)
 
 const handleNodesChange = changes => {
   changes.forEach(change => {
     if (change.type === 'position' && change.position) {
-      emit('move', Number(change.id), { node_x: change.position.x, node_y: change.position.y })
+      emit('move', Number(change.id) || change.id, { node_x: change.position.x, node_y: change.position.y })
     }
   })
 }
 
 onNodesChange(handleNodesChange)
+
+const setNodePositions = positionMap => {
+  setNodes(nodes => nodes.map(node => {
+    const pos = positionMap.get(node.id)
+    return pos ? { ...node, position: pos } : node
+  }))
+  setTimeout(() => fitView({ padding: 0.2 }), 50)
+}
+
+defineExpose({ setNodePositions, fitView })
 </script>
 
 <style scoped>

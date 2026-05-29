@@ -10,7 +10,7 @@
           @update:title="store.workflow.title = $event"
           @save="store.save()"
           @export="handleExport"
-          @import-text="handleImportText"
+          @import-text="showImportModal = true"
           @auto-layout="handleAutoLayout"
         />
       </div>
@@ -26,6 +26,7 @@
       </div>
       <div class="workflow-canvas">
         <VoiceFlowCanvas
+          ref="canvasRef"
           :segments="store.segments"
           :edges="store.edges"
           @select="store.selectSegment($event)"
@@ -50,15 +51,50 @@
         />
       </div>
     </div>
+
+    <!-- Import Text Modal -->
+    <a-modal
+      v-model:open="showImportModal"
+      title="导入文本"
+      @ok="handleImportConfirm"
+      ok-text="导入"
+      cancel-text="取消"
+      width="560px"
+    >
+      <a-tabs v-model:activeKey="importTab" size="small">
+        <a-tab-pane key="paste" tab="粘贴文本">
+          <a-textarea
+            v-model:value="importText"
+            placeholder="粘贴中文旁白文本..."
+            :autoSize="{ minRows: 6, maxRows: 12 }"
+          />
+        </a-tab-pane>
+        <a-tab-pane key="select" tab="选择已有文本">
+          <a-select
+            v-model:value="importTextId"
+            placeholder="选择一篇文本"
+            show-search
+            :filter-option="filterTextOption"
+            style="width: 100%"
+            @change="handleTextSelect"
+          >
+            <a-select-option v-for="t in allTexts" :key="t.id" :value="t.id">
+              {{ t.title }}
+            </a-select-option>
+          </a-select>
+        </a-tab-pane>
+      </a-tabs>
+    </a-modal>
   </div>
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { useVoiceWorkflowsStore } from '../stores/voiceWorkflows'
 import { useSettings } from '../stores/settings'
+import { useTextsStore } from '../stores/texts'
 import WorkflowToolbar from '../components/voice-workflow/WorkflowToolbar.vue'
 import SourcePanel from '../components/voice-workflow/SourcePanel.vue'
 import VoiceFlowCanvas from '../components/voice-workflow/VoiceFlowCanvas.vue'
@@ -68,8 +104,18 @@ import TimelineAuditionBar from '../components/voice-workflow/TimelineAuditionBa
 const route = useRoute()
 const router = useRouter()
 const store = useVoiceWorkflowsStore()
+const textsStore = useTextsStore()
 const { ttsKey } = useSettings()
 const fallbackVoiceDescription = '稳定自然的中文旁白声线，吐字清晰，情绪服从每句设置。'
+
+const canvasRef = ref(null)
+
+// Import modal state
+const showImportModal = ref(false)
+const importTab = ref('paste')
+const importText = ref('')
+const importTextId = ref(null)
+const allTexts = computed(() => textsStore.texts)
 
 onMounted(async () => {
   if (route.params.id && route.params.id !== 'new') {
@@ -80,20 +126,77 @@ onMounted(async () => {
   router.replace(`/voice-workflows/${data.id}`)
 })
 
+const filterTextOption = (input, option) => {
+  return option.children[0].children.toLowerCase().includes(input.toLowerCase())
+}
+
+const handleTextSelect = async (id) => {
+  const text = await textsStore.fetchText(id)
+  if (text) {
+    importText.value = text.content
+  }
+}
+
+const handleImportConfirm = () => {
+  const content = importText.value.trim()
+  if (!content) {
+    message.warning('请输入或选择文本')
+    return
+  }
+  store.workflow.source_content = content
+  showImportModal.value = false
+  importText.value = ''
+  importTextId.value = null
+  message.success('文本已导入，点击"自动切句"生成节点')
+}
+
 const handleAutoLayout = () => {
+  const positionMap = new Map()
   store.segments.forEach((segment, index) => {
+    const x = 80 + index * 240
+    const y = 120 + (index % 2) * 80
     store.updateSegment(segment.id, {
-      node_x: 80 + index * 240,
-      node_y: 120 + (index % 2) * 80,
+      node_x: x,
+      node_y: y,
       audio_status: segment.audio_status,
     })
+    positionMap.set(String(segment.id), { x, y })
+  })
+  if (canvasRef.value?.setNodePositions) {
+    canvasRef.value.setNodePositions(positionMap)
+  }
+}
+
+const handleAddSegment = () => {
+  store.addSegment('新语句。', { emotion: 'calm' })
+}
+
+const handleAddPause = () => {
+  store.addSegment('……', {
+    emotion: 'suppressed',
+    pause_before_ms: 500,
+    pause_after_ms: 500,
+    transition: 'normal',
   })
 }
 
-const handleImportText = () => { /* deferred scope */ }
-const handleAddSegment = () => { /* deferred scope */ }
-const handleAddPause = () => { /* deferred scope */ }
-const handleApplyEmotion = () => { /* deferred scope */ }
+const handleApplyEmotion = (emotion) => {
+  if (!store.selectedSegment) {
+    message.warning('请先选择一个语句节点')
+    return
+  }
+  const presets = {
+    calm: { emotion: 'calm', intensity: 0.25, rate: 0.95, pitch: -1, volume_db: -1 },
+    suppressed: { emotion: 'suppressed', intensity: 0.55, rate: 0.9, pitch: -1, volume_db: -2 },
+    angry_burst: { emotion: 'angry_burst', intensity: 1.6, rate: 1.15, pitch: 2, volume_db: 3 },
+    cold: { emotion: 'cold', intensity: 0.7, rate: 0.8, pitch: -2, volume_db: -2 },
+  }
+  const preset = presets[emotion]
+  if (preset) {
+    store.updateSegment(store.selectedSegmentId, preset)
+    message.success(`已应用情绪预设: ${emotion}`)
+  }
+}
 
 const handlePlanSegments = async () => {
   if (!store.workflow.source_content.trim()) {
