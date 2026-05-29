@@ -117,6 +117,13 @@ export const useVoiceWorkflowsStore = defineStore('voiceWorkflows', {
       }))
       this.selectedSegmentId = this.segments[0]?.id || null
     },
+    async auditionPath(apiKey, voiceDescription) {
+      const { data } = await voiceWorkflowsApi.auditionPath(this.workflow.id, {
+        api_key: apiKey,
+        voice_description: voiceDescription,
+      })
+      return data
+    },
     async auditionSegment(segment, apiKey, voiceDescription) {
       if (typeof segment.id === 'string') {
         await this.save()

@@ -1,3 +1,4 @@
+import base64
 import io
 from urllib.parse import quote
 
@@ -125,6 +126,45 @@ def audition_voice_workflow_segment(workflow_id, segment_id):
         'audio_base64': result['audio_base64'],
         'duration': round(result['duration'], 3),
         'fingerprint': result['fingerprint'],
+    })
+
+
+@voice_workflows_bp.route('/api/voice-workflows/<int:workflow_id>/audition-path', methods=['POST'])
+def audition_voice_workflow_path(workflow_id):
+    workflow = VoiceWorkflow.query.get_or_404(workflow_id)
+    data = request.get_json() or {}
+    api_key = data.get('api_key')
+    if not api_key:
+        return jsonify({'error': '请填写 API Key'}), 400
+
+    audio_items = []
+    durations = []
+    for segment in ordered_segments(workflow):
+        profile_id = segment.voice_profile_id or workflow.default_voice_profile_id
+        profile = repo.get_profile_by_id(int(profile_id)) if profile_id else None
+        model = (profile or {}).get('model') or 'mimo-v2.5-tts-voicedesign'
+        result = synthesize_emotion_segment(
+            api_key,
+            segment.to_dict(),
+            voice_profile=profile,
+            fallback_voice_description=data.get('voice_description', ''),
+            style_tags=(profile or {}).get('style_tags'),
+            model=model,
+            voice=_profile_audio_voice(profile),
+        )
+        audio_items.append({'wav_info': result['wav_info'], 'segment': segment.to_dict()})
+        durations.append(result['duration'])
+
+    full_audio = concat_emotional_wavs(audio_items)
+    audio_base64 = base64.b64encode(full_audio).decode('ascii')
+    timeline = build_emotional_subtitle_timeline(
+        [segment.to_dict() for segment in ordered_segments(workflow)], durations
+    )
+    return jsonify({
+        'audio_base64': audio_base64,
+        'total_duration': round(sum(durations), 3),
+        'segment_count': len(durations),
+        'timeline': timeline,
     })
 
 

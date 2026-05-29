@@ -136,3 +136,32 @@ def test_export_voice_workflow_zip(client, monkeypatch):
         manifest = json.loads(zf.read('manifest.json').decode('utf-8'))
         assert manifest['source'] == 'voice_workflow'
         assert len(manifest['segments']) == 2
+
+
+def test_audition_path_returns_full_audio(client, monkeypatch):
+    created = client.post('/api/voice-workflows', json={
+        'title': '路径试听',
+        'source_content': '我知道了。可是你为什么现在才告诉我！',
+    }).get_json()
+
+    monkeypatch.setattr('server.routes.voice_workflows.repo.get_profile_by_id', lambda pid: None)
+
+    class FakeProvider:
+        def __init__(self, api_key):
+            pass
+        def synthesize(self, **kwargs):
+            return base64.b64encode(_make_wav()).decode('ascii')
+
+    monkeypatch.setattr('server.services.emotional_tts.TTSProvider', FakeProvider)
+
+    response = client.post(f"/api/voice-workflows/{created['id']}/audition-path", json={
+        'api_key': 'test-key',
+        'voice_description': '温柔女声',
+    })
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data['audio_base64']
+    assert data['segment_count'] == 2
+    assert data['total_duration'] > 0
+    assert len(data['timeline']) == 2

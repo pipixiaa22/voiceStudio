@@ -4,6 +4,7 @@
       <span>{{ segments.length }} 句旁白</span>
       <a-space>
         <a-button @click="$emit('audition-selected')">试听选中</a-button>
+        <a-button @click="$emit('audition-path')">试听整条路径</a-button>
         <a-button @click="$emit('export')">导出同步包</a-button>
       </a-space>
     </div>
@@ -26,7 +27,7 @@ defineProps({
   segments: { type: Array, default: () => [] },
   selectedSegmentId: { type: Number, default: null },
 })
-defineEmits(['select', 'audition-selected', 'export'])
+defineEmits(['select', 'audition-selected', 'audition-path', 'export'])
 </script>
 
 <style scoped>

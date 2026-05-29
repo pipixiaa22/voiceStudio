@@ -45,6 +45,7 @@
           :selected-segment-id="store.selectedSegmentId"
           @select="store.selectSegment($event)"
           @audition-selected="handleAuditionSelected"
+          @audition-path="handleAuditionPath"
           @export="handleExport"
         />
       </div>
@@ -124,6 +125,15 @@ const handleAudition = async segment => {
 
 const handleAuditionSelected = async () => {
   if (store.selectedSegment) await handleAudition(store.selectedSegment)
+}
+
+const handleAuditionPath = async () => {
+  if (!ttsKey.value) {
+    message.warning('请先配置 TTS API Key')
+    return
+  }
+  const data = await store.auditionPath(ttsKey.value, fallbackVoiceDescription)
+  playBase64Audio(data.audio_base64)
 }
 
 const handleExport = async () => {
