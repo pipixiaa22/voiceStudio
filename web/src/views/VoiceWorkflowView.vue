@@ -29,10 +29,14 @@
           ref="canvasRef"
           :segments="store.segments"
           :edges="store.edges"
+          :arrow-mode="arrowMode"
+          :arrow-source="arrowSourceId"
           @select="store.selectSegment($event)"
           @move="(id, pos) => store.updateSegment(id, pos)"
-          @add-edge="store.addEdge($event)"
+          @add-edge="handleAddEdge"
           @remove-edge="store.removeEdge($event)"
+          @toggle-arrow-mode="toggleArrowMode"
+          @arrow-source="setArrowSource"
         />
       </div>
       <div class="workflow-right">
@@ -111,6 +115,23 @@ const { ttsKey } = useSettings()
 const fallbackVoiceDescription = '稳定自然的中文旁白声线，吐字清晰，情绪服从每句设置。'
 
 const canvasRef = ref(null)
+
+// Arrow mode state
+const arrowMode = ref(false)
+const arrowSourceId = ref(null)
+const toggleArrowMode = () => {
+  arrowMode.value = !arrowMode.value
+  arrowSourceId.value = null
+}
+const setArrowSource = (id) => {
+  arrowSourceId.value = id
+}
+const handleAddEdge = ({ source_segment_id, target_segment_id }) => {
+  store.addEdge({ source_segment_id, target_segment_id })
+  const src = store.segments.find(s => String(s.id) === String(source_segment_id))
+  const tgt = store.segments.find(s => String(s.id) === String(target_segment_id))
+  message.success(`已连接: #${src?.order_index || '?'} → #${tgt?.order_index || '?'}`)
+}
 
 // Import modal state
 const showImportModal = ref(false)

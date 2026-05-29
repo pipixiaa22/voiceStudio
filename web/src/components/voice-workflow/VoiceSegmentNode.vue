@@ -1,23 +1,22 @@
 <template>
-  <div class="voice-node" :class="[`emotion-${data.emotion || 'neutral'}`, { selected }]">
-    <Handle type="target" :position="Position.Left" class="handle handle-target" />
+  <div class="voice-node" :class="[`emotion-${data.emotion || 'neutral'}`, { selected, 'arrow-source': isArrowSource }]">
     <div class="node-header">
       <strong>{{ data.order_index }}</strong>
       <span>{{ data.audio_status === 'ready' ? '已生成' : '需生成' }}</span>
     </div>
     <p>{{ data.text }}</p>
     <div class="node-meta">{{ emotionLabel }} · {{ data.voice_profile_id ? `音色 ${data.voice_profile_id}` : '默认音色' }}</div>
-    <Handle type="source" :position="Position.Right" class="handle handle-source" />
+    <div v-if="isArrowSource" class="arrow-badge">起点</div>
   </div>
 </template>
 
 <script setup>
 import { computed } from 'vue'
-import { Handle, Position } from '@vue-flow/core'
 
 const props = defineProps({
   data: { type: Object, required: true },
   selected: { type: Boolean, default: false },
+  isArrowSource: { type: Boolean, default: false },
 })
 const emotionLabel = computed(() => ({
   calm: '平静',
@@ -47,6 +46,10 @@ const emotionLabel = computed(() => ({
   border-color: #1677ff;
   box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.2), 0 2px 8px rgba(0, 0, 0, 0.12);
 }
+.voice-node.arrow-source {
+  border-color: #fa8c16;
+  box-shadow: 0 0 0 3px rgba(250, 140, 22, 0.3), 0 2px 8px rgba(0, 0, 0, 0.12);
+}
 .node-header { display: flex; justify-content: space-between; font-size: 12px; }
 .voice-node p { margin: 8px 0; font-size: 13px; line-height: 1.5; }
 .node-meta { font-size: 11px; color: var(--text-muted); }
@@ -58,22 +61,20 @@ const emotionLabel = computed(() => ({
 .emotion-cold.selected,
 .emotion-calm.selected,
 .emotion-suppressed.selected { border-color: #1677ff; }
+.emotion-angry_burst.arrow-source,
+.emotion-cold.arrow-source,
+.emotion-calm.arrow-source,
+.emotion-suppressed.arrow-source { border-color: #fa8c16; }
 
-.handle {
-  width: 10px !important;
-  height: 10px !important;
-  border: 2px solid #8e7f67 !important;
-  background: var(--surface) !important;
-  transition: background 0.15s ease;
-}
-.handle:hover {
-  background: #1677ff !important;
-  border-color: #1677ff !important;
-}
-.handle-target {
-  left: -6px !important;
-}
-.handle-source {
-  right: -6px !important;
+.arrow-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: #fa8c16;
+  color: #fff;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-weight: 600;
 }
 </style>
