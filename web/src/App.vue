@@ -46,6 +46,16 @@
               </template>
               <span>热点采集</span>
             </a-menu-item>
+            <a-menu-item key="/voice-workflows">
+              <template #icon>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M9 18V5l12-2v13"/>
+                  <circle cx="6" cy="18" r="3"/>
+                  <circle cx="18" cy="16" r="3"/>
+                </svg>
+              </template>
+              <span>配音工作台</span>
+            </a-menu-item>
           </a-menu>
           <a-tooltip title="设置">
             <a-button type="text" class="settings-btn" @click="openDefaultSettings">
@@ -102,6 +112,7 @@ onUnmounted(() => {
 
 const selectedKeys = computed(() => {
   if (route.path.startsWith('/discovery')) return ['/discovery']
+  if (route.path.startsWith('/voice-workflows')) return ['/voice-workflows']
   if (route.path === '/' || route.path.startsWith('/edit')) return ['/']
   return [route.path]
 })

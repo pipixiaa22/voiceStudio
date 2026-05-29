@@ -10,6 +10,9 @@
   },
   "dependencies": {
     "@ant-design/icons-vue": "^7.0.1",
+    "@vue-flow/background": "^1.3.2",
+    "@vue-flow/controls": "^1.1.3",
+    "@vue-flow/core": "^1.48.2",
     "ant-design-vue": "^4.2.6",
     "axios": "^1.16.1",
     "pinia": "^3.0.4",

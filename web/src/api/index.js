@@ -129,4 +129,15 @@ export const customProvidersApi = {
   delete: (id) => api.delete(`/model-providers/custom/${id}`),
 }
 
+export const voiceWorkflowsApi = {
+  list: () => api.get('/voice-workflows'),
+  create: (data) => api.post('/voice-workflows', data),
+  get: (id) => api.get(`/voice-workflows/${id}`),
+  update: (id, data) => api.put(`/voice-workflows/${id}`, data),
+  delete: (id) => api.delete(`/voice-workflows/${id}`),
+  planSegments: (id, data) => api.post(`/voice-workflows/${id}/segments/plan`, data),
+  auditionSegment: (id, segmentId, data) => api.post(`/voice-workflows/${id}/segments/${segmentId}/audition`, data),
+  exportPackage: (id, data) => api.post(`/voice-workflows/${id}/export`, data, { responseType: 'blob' }),
+}
+
 export default api
