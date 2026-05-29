@@ -20,6 +20,7 @@ class TTSProvider:
         model: str = 'mimo-v2.5-tts-voicedesign',
         voice: str | None = None,
         optimize_text_preview: bool = False,
+        emotion_options: dict | None = None,
     ) -> bytes:
         """调用 TTS 合成语音，返回 base64 编码的音频数据。"""
         assistant_text = _apply_style_tags(text, style_tags)

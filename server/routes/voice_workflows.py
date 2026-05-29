@@ -1,9 +1,16 @@
-from flask import Blueprint, jsonify, request
+import io
+from urllib.parse import quote
+
+from flask import Blueprint, jsonify, request, send_file
 
 from server.models import db
 from server.models.voice_workflow import VoiceWorkflow, VoiceWorkflowEdge, VoiceWorkflowSegment
+from server.services import voice_profile_repository as repo
+from server.services.audio_package import build_srt, build_zip_package
+from server.services.audio_postprocess import concat_emotional_wavs, build_emotional_subtitle_timeline
+from server.services.emotional_tts import synthesize_emotion_segment
 from server.services.emotion_planner import plan_workflow_segments
-from server.services.voice_workflow_service import save_workflow_snapshot
+from server.services.voice_workflow_service import build_workflow_manifest, ordered_segments, save_workflow_snapshot
 
 voice_workflows_bp = Blueprint('voice_workflows', __name__)
 
@@ -84,3 +91,86 @@ def plan_voice_workflow_segments_endpoint(workflow_id):
     content = data.get('content') or ''
     max_chars = int(data.get('max_chars', 80))
     return jsonify({'segments': plan_workflow_segments(content, max_chars=max_chars)})
+
+
+def _profile_audio_voice(profile):
+    if not profile:
+        return None
+    if profile.get('source_type') == 'voice_clone':
+        return profile.get('voice_sample_data_uri')
+    return profile.get('builtin_voice')
+
+
+@voice_workflows_bp.route('/api/voice-workflows/<int:workflow_id>/segments/<int:segment_id>/audition', methods=['POST'])
+def audition_voice_workflow_segment(workflow_id, segment_id):
+    workflow = VoiceWorkflow.query.get_or_404(workflow_id)
+    segment = VoiceWorkflowSegment.query.filter_by(id=segment_id, workflow_id=workflow.id).first_or_404()
+    data = request.get_json() or {}
+    api_key = data.get('api_key')
+    if not api_key:
+        return jsonify({'error': '请填写 API Key'}), 400
+    profile_id = segment.voice_profile_id or workflow.default_voice_profile_id
+    profile = repo.get_profile_by_id(int(profile_id)) if profile_id else None
+    model = (profile or {}).get('model') or 'mimo-v2.5-tts-voicedesign'
+    result = synthesize_emotion_segment(
+        api_key,
+        segment.to_dict(),
+        voice_profile=profile,
+        fallback_voice_description=data.get('voice_description', ''),
+        style_tags=(profile or {}).get('style_tags'),
+        model=model,
+        voice=_profile_audio_voice(profile),
+    )
+    return jsonify({
+        'audio_base64': result['audio_base64'],
+        'duration': round(result['duration'], 3),
+        'fingerprint': result['fingerprint'],
+    })
+
+
+@voice_workflows_bp.route('/api/voice-workflows/<int:workflow_id>/export', methods=['POST'])
+def export_voice_workflow(workflow_id):
+    workflow = VoiceWorkflow.query.get_or_404(workflow_id)
+    data = request.get_json() or {}
+    api_key = data.get('api_key')
+    if not api_key:
+        return jsonify({'error': '请填写 API Key'}), 400
+
+    chunk_files = []
+    audio_items = []
+    manifest_segments = []
+    durations = []
+
+    for index, segment in enumerate(ordered_segments(workflow), 1):
+        profile_id = segment.voice_profile_id or workflow.default_voice_profile_id
+        profile = repo.get_profile_by_id(int(profile_id)) if profile_id else None
+        model = (profile or {}).get('model') or 'mimo-v2.5-tts-voicedesign'
+        result = synthesize_emotion_segment(
+            api_key,
+            segment.to_dict(),
+            voice_profile=profile,
+            fallback_voice_description=data.get('voice_description', ''),
+            style_tags=(profile or {}).get('style_tags'),
+            model=model,
+            voice=_profile_audio_voice(profile),
+        )
+        filename = f'segments/{index:03d}.wav'
+        chunk_files.append((filename, result['audio_bytes']))
+        audio_items.append({'wav_info': result['wav_info'], 'segment': segment.to_dict()})
+        durations.append(result['duration'])
+        manifest_segments.append({**segment.to_dict(), 'filename': filename, 'duration': round(result['duration'], 3)})
+
+    full_audio = concat_emotional_wavs(audio_items)
+    timeline = build_emotional_subtitle_timeline([segment.to_dict() for segment in ordered_segments(workflow)], durations)
+    srt_content = build_srt(timeline)
+    manifest = build_workflow_manifest(workflow, manifest_segments, timeline)
+    zip_bytes = build_zip_package(workflow.title, full_audio, srt_content, manifest, chunk_files)
+    download_name = f'{workflow.title}_配音工作流.zip'
+    response = send_file(
+        io.BytesIO(zip_bytes),
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name=download_name,
+    )
+    response.headers['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(download_name)}"
+    return response

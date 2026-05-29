@@ -53,3 +53,86 @@ def test_delete_voice_workflow(client):
 
     assert response.status_code == 204
     assert client.get(f"/api/voice-workflows/{created['id']}").status_code == 404
+
+
+import base64
+import io
+import json
+import wave
+import zipfile
+
+
+def _make_wav(duration_seconds=1.0, framerate=8000):
+    frame_count = int(duration_seconds * framerate)
+    buf = io.BytesIO()
+    with wave.open(buf, 'wb') as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(framerate)
+        wav.writeframes(b'\x00\x00' * frame_count)
+    return buf.getvalue()
+
+
+def test_audition_segment_returns_audio(client, monkeypatch):
+    created = client.post('/api/voice-workflows', json={
+        'title': '试听工程',
+        'source_content': '我知道了。',
+    }).get_json()
+    segment_id = created['segments'][0]['id']
+
+    monkeypatch.setattr('server.routes.voice_workflows.repo.get_profile_by_id', lambda profile_id: None)
+
+    class FakeProvider:
+        def __init__(self, api_key):
+            self.api_key = api_key
+
+        def synthesize(self, **kwargs):
+            return base64.b64encode(_make_wav()).decode('ascii')
+
+    monkeypatch.setattr('server.services.emotional_tts.TTSProvider', FakeProvider)
+
+    response = client.post(f"/api/voice-workflows/{created['id']}/segments/{segment_id}/audition", json={
+        'api_key': 'test-key',
+        'voice_description': '温柔女声',
+    })
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data['audio_base64']
+    assert data['duration'] == 1.0
+    assert data['fingerprint'].startswith('sha256:')
+
+
+def test_export_voice_workflow_zip(client, monkeypatch):
+    created = client.post('/api/voice-workflows', json={
+        'title': '导出工程',
+        'source_content': '我知道了。可是你为什么现在才告诉我！',
+    }).get_json()
+
+    monkeypatch.setattr('server.routes.voice_workflows.repo.get_profile_by_id', lambda profile_id: None)
+
+    class FakeProvider:
+        def __init__(self, api_key):
+            self.api_key = api_key
+
+        def synthesize(self, **kwargs):
+            return base64.b64encode(_make_wav()).decode('ascii')
+
+    monkeypatch.setattr('server.services.emotional_tts.TTSProvider', FakeProvider)
+
+    response = client.post(f"/api/voice-workflows/{created['id']}/export", json={
+        'api_key': 'test-key',
+        'voice_description': '温柔女声',
+        'export_options': {'include_segment_wavs': True},
+    })
+
+    assert response.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(response.data)) as zf:
+        names = zf.namelist()
+        assert 'manifest.json' in names
+        assert any(name.endswith('_完整音频.wav') for name in names)
+        assert any(name.endswith('_同步字幕.srt') for name in names)
+        assert 'segments/001.wav' in names
+        manifest = json.loads(zf.read('manifest.json').decode('utf-8'))
+        assert manifest['source'] == 'voice_workflow'
+        assert len(manifest['segments']) == 2
