@@ -30,6 +30,8 @@ def validate_linear_edges(segments, edges) -> list[int]:
         target = edge.get('target_segment_id')
         if source not in ids or target not in ids:
             raise ValueError('连线引用了不存在的语句节点')
+        if source == target:
+            raise ValueError('语句节点不能连接到自身')
         outgoing[source] = outgoing.get(source, 0) + 1
         incoming[target] = incoming.get(target, 0) + 1
         if outgoing[source] > 1:
@@ -80,6 +82,29 @@ def _segment_from_payload(workflow_id: int, payload: dict, index: int) -> VoiceW
     )
 
 
+def _update_segment_from_payload(segment: VoiceWorkflowSegment, payload: dict, index: int):
+    """Update an existing segment's fields from payload (preserves ID)."""
+    segment.order_index = _clamp_int(payload.get('order_index'), 1, 100000, index + 1)
+    segment.text = (payload.get('text') or '').strip()
+    segment.node_x = _clamp_float(payload.get('node_x'), -100000, 100000, 80 + index * 240)
+    segment.node_y = _clamp_float(payload.get('node_y'), -100000, 100000, 120)
+    segment.emotion = payload.get('emotion') or 'neutral'
+    segment.intensity = _clamp_float(payload.get('intensity'), 0.0, 2.0, 0.5)
+    segment.rate = _clamp_float(payload.get('rate'), 0.5, 2.0, 1.0)
+    segment.pitch = _clamp_float(payload.get('pitch'), -12.0, 12.0, 0.0)
+    segment.volume_db = _clamp_float(payload.get('volume_db'), -12.0, 12.0, 0.0)
+    segment.pause_before_ms = _clamp_int(payload.get('pause_before_ms'), 0, 10000, 0)
+    segment.pause_after_ms = _clamp_int(payload.get('pause_after_ms'), 0, 10000, 250)
+    segment.transition = payload.get('transition') or 'normal'
+    segment.delivery_instruction = payload.get('delivery_instruction') or ''
+    segment.voice_profile_id = payload.get('voice_profile_id')
+    # Preserve audio_status and fingerprint if client sends them
+    if payload.get('audio_status'):
+        segment.audio_status = payload['audio_status']
+    if payload.get('audio_fingerprint'):
+        segment.audio_fingerprint = payload['audio_fingerprint']
+
+
 def save_workflow_snapshot(workflow_id: int, payload: dict) -> dict:
     workflow = VoiceWorkflow.query.get_or_404(workflow_id)
     workflow_data = payload.get('workflow') or {}
@@ -89,30 +114,61 @@ def save_workflow_snapshot(workflow_id: int, payload: dict) -> dict:
     workflow.default_voice_profile_id = workflow_data.get('default_voice_profile_id', workflow.default_voice_profile_id)
     workflow.settings = workflow_data.get('settings', workflow.settings)
 
-    # Delete edges first — MySQL FK constraint requires edges gone before segments
-    for edge in list(workflow.edges):
-        db.session.delete(edge)
-    for segment in list(workflow.segments):
-        db.session.delete(segment)
+    # Upsert segments: update existing by ID, create new for tmp-* IDs
+    existing_by_id = {s.id: s for s in workflow.segments}
+    payload_segments = payload.get('segments') or []
+    seen_ids = set()
+    created_segments = []
+
+    for index, segment_payload in enumerate(payload_segments):
+        raw_id = segment_payload.get('id')
+        # Check if this is an existing DB segment (integer ID that exists)
+        if isinstance(raw_id, int) and raw_id in existing_by_id:
+            segment = existing_by_id[raw_id]
+            _update_segment_from_payload(segment, segment_payload, index)
+            seen_ids.add(raw_id)
+        else:
+            # New segment (tmp-* string ID or missing ID)
+            segment = _segment_from_payload(workflow.id, segment_payload, index)
+            if not segment.text:
+                raise ValueError('语句文本不能为空')
+            db.session.add(segment)
+        created_segments.append(segment)
+
+    # Delete segments not in payload (edges first for FK)
+    segments_to_delete = [s for s in workflow.segments if s.id not in seen_ids]
+    if segments_to_delete:
+        # Delete edges referencing segments being deleted
+        delete_seg_ids = {s.id for s in segments_to_delete}
+        for edge in list(workflow.edges):
+            if edge.source_segment_id in delete_seg_ids or edge.target_segment_id in delete_seg_ids:
+                db.session.delete(edge)
+        for segment in segments_to_delete:
+            db.session.delete(segment)
+
     db.session.flush()
 
-    created_segments = []
-    for index, segment_payload in enumerate(payload.get('segments') or []):
-        segment = _segment_from_payload(workflow.id, segment_payload, index)
-        if not segment.text:
-            raise ValueError('语句文本不能为空')
-        db.session.add(segment)
-        created_segments.append(segment)
+    # Rebuild all edges
+    for edge in list(workflow.edges):
+        db.session.delete(edge)
     db.session.flush()
 
     edge_payloads = []
     for edge_payload in payload.get('edges') or []:
         source_client_id = edge_payload.get('source_client_id')
         target_client_id = edge_payload.get('target_client_id')
-        source = created_segments[source_client_id] if isinstance(source_client_id, int) else None
-        target = created_segments[target_client_id] if isinstance(target_client_id, int) else None
+        source = (
+            created_segments[source_client_id]
+            if isinstance(source_client_id, int) and 0 <= source_client_id < len(created_segments)
+            else None
+        )
+        target = (
+            created_segments[target_client_id]
+            if isinstance(target_client_id, int) and 0 <= target_client_id < len(created_segments)
+            else None
+        )
         if not source or not target:
-            continue
+            raise ValueError('连线引用了不存在的语句节点')
         edge_payloads.append({
             'source_segment_id': source.id,
             'target_segment_id': target.id,
@@ -127,8 +183,53 @@ def save_workflow_snapshot(workflow_id: int, payload: dict) -> dict:
     return workflow.to_dict(include_children=True)
 
 
+def resolve_linear_path(workflow: VoiceWorkflow) -> list[VoiceWorkflowSegment]:
+    """Traverse edges to get the true playback order. Falls back to order_index if no edges."""
+    segments = list(workflow.segments)
+    if not segments:
+        return []
+    edges = list(workflow.edges)
+    if not edges:
+        return sorted(segments, key=lambda s: s.order_index)
+
+    # Build adjacency and find head (node with no incoming edge)
+    outgoing = {}
+    incoming = set()
+    for edge in edges:
+        outgoing[edge.source_segment_id] = edge.target_segment_id
+        incoming.add(edge.target_segment_id)
+
+    heads = [s for s in segments if s.id not in incoming]
+    if len(heads) != 1:
+        # Not a clean linear chain — fall back to order_index
+        return sorted(segments, key=lambda s: s.order_index)
+
+    # Traverse from head
+    seg_by_id = {s.id: s for s in segments}
+    path = []
+    current = heads[0].id
+    visited = set()
+    while current is not None and current not in visited:
+        visited.add(current)
+        seg = seg_by_id.get(current)
+        if seg:
+            path.append(seg)
+        current = outgoing.get(current)
+
+    # If we didn't visit all segments (broken chain), append remaining by order_index
+    if len(path) < len(segments):
+        visited_ids = {s.id for s in path}
+        remaining = sorted(
+            [s for s in segments if s.id not in visited_ids],
+            key=lambda s: s.order_index,
+        )
+        path.extend(remaining)
+
+    return path
+
+
 def ordered_segments(workflow: VoiceWorkflow) -> list[VoiceWorkflowSegment]:
-    return sorted(workflow.segments, key=lambda segment: segment.order_index)
+    return resolve_linear_path(workflow)
 
 
 def build_workflow_manifest(workflow: VoiceWorkflow, segments: list[dict], timeline: list[dict]) -> dict:

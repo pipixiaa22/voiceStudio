@@ -7,10 +7,14 @@
       </a-form-item>
       <a-form-item label="情绪">
         <a-select :value="segment.emotion" @change="value => patch({ emotion: value })">
+          <a-select-option value="neutral">中性</a-select-option>
           <a-select-option value="calm">平静</a-select-option>
           <a-select-option value="suppressed">压抑</a-select-option>
           <a-select-option value="angry_burst">爆发愤怒</a-select-option>
+          <a-select-option value="sad">悲伤</a-select-option>
           <a-select-option value="cold">冷漠</a-select-option>
+          <a-select-option value="excited">兴奋</a-select-option>
+          <a-select-option value="whisper">耳语</a-select-option>
         </a-select>
       </a-form-item>
       <a-form-item label="强度">
@@ -18,6 +22,9 @@
       </a-form-item>
       <a-form-item label="语速">
         <a-slider :value="segment.rate" :min="0.5" :max="2" :step="0.05" @change="value => patch({ rate: value })" />
+      </a-form-item>
+      <a-form-item label="音高">
+        <a-slider :value="segment.pitch" :min="-12" :max="12" :step="1" @change="value => patch({ pitch: value })" />
       </a-form-item>
       <a-form-item label="音量 dB">
         <a-slider :value="segment.volume_db" :min="-12" :max="12" :step="1" @change="value => patch({ volume_db: value })" />
@@ -30,6 +37,20 @@
           <a-input-number :value="segment.pause_after_ms" :min="0" :max="10000" @change="value => patch({ pause_after_ms: value })" />
         </a-form-item>
       </div>
+      <a-form-item label="转场">
+        <a-select :value="segment.transition" @change="value => patch({ transition: value })">
+          <a-select-option value="normal">正常</a-select-option>
+          <a-select-option value="burst">爆发</a-select-option>
+        </a-select>
+      </a-form-item>
+      <a-form-item label="表演指令">
+        <a-textarea
+          :value="segment.delivery_instruction"
+          @update:value="patch({ delivery_instruction: $event })"
+          placeholder="补充表演要求，例如：语气温柔但坚定"
+          :autoSize="{ minRows: 2, maxRows: 4 }"
+        />
+      </a-form-item>
       <a-button block @click="$emit('audition', segment)">试听这一句</a-button>
     </a-form>
   </div>

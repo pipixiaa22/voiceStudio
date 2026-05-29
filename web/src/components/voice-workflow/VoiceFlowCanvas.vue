@@ -22,7 +22,6 @@
     <VueFlow
       :nodes="flowNodes"
       :edges="flowEdges"
-      :default-edge-options="{ type: 'smoothstep', animated: false }"
       fit-view-on-init
       @nodes-change="handleNodesChange"
       @edges-change="handleEdgesChange"
@@ -52,7 +51,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['select', 'move', 'add-edge', 'remove-edge'])
 
-const { onNodesChange, onNodeClick, setNodes, fitView } = useVueFlow()
+const { onNodeClick, setNodes, fitView } = useVueFlow()
 
 // Arrow mode state
 const localArrowMode = ref(false)
@@ -75,10 +74,12 @@ const flowNodes = computed(() => props.segments.map(segment => {
     id: segId,
     type: 'segment',
     position: { x: segment.node_x || 0, y: segment.node_y || 0 },
-    data: segment,
+    data: {
+      ...segment,
+      isArrowSource: localArrowMode.value && arrowSourceId.value === segId,
+      arrowMode: localArrowMode.value,
+    },
     selected: false,
-    isArrowSource: localArrowMode.value && arrowSourceId.value === segId,
-    arrowMode: localArrowMode.value,
   }
 }))
 
@@ -173,8 +174,6 @@ const handleEdgesChange = changes => {
     }
   })
 }
-
-onNodesChange(handleNodesChange)
 
 const setNodePositions = positionMap => {
   setNodes(nodes => nodes.map(node => {
