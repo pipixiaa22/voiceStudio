@@ -40,3 +40,16 @@ def test_build_emotional_subtitle_timeline_uses_pauses():
     assert timeline[0]['end'] == 1
     assert timeline[1]['start'] == 1.33
     assert timeline[1]['end'] == 3.33
+
+
+def test_build_emotional_subtitle_timeline_splits_long_text():
+    timeline = build_emotional_subtitle_timeline([
+        {'id': 1, 'text': '这是很长的一段话，需要被拆分成多个字幕段。每个字幕段的时间应该按文本长度比例分配。', 'pause_before_ms': 0, 'pause_after_ms': 0},
+    ], [4.0], subtitle_max_chars=20)
+
+    assert len(timeline) > 1
+    total_duration = timeline[-1]['end'] - timeline[0]['start']
+    assert abs(total_duration - 4.0) < 0.01
+    # All text segments should be non-empty
+    for entry in timeline:
+        assert entry['text'].strip()

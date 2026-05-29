@@ -3,6 +3,8 @@ import math
 import struct
 import wave
 
+from splitter import split_text
+
 
 def _silence(info: dict, duration_ms: int) -> bytes:
     frames = round(info['framerate'] * duration_ms / 1000)
@@ -50,19 +52,36 @@ def concat_emotional_wavs(items: list[dict]) -> bytes:
     return output.getvalue()
 
 
-def build_emotional_subtitle_timeline(segments: list[dict], durations: list[float]) -> list[dict]:
+def build_emotional_subtitle_timeline(
+    segments: list[dict],
+    durations: list[float],
+    subtitle_max_chars: int = 20,
+) -> list[dict]:
     timeline = []
     current_time = 0.0
-    for index, (segment, duration) in enumerate(zip(segments, durations), 1):
+    for segment, duration in zip(segments, durations):
         current_time += int(segment.get('pause_before_ms') or 0) / 1000
-        start = current_time
-        end = start + duration
-        timeline.append({
-            'index': index,
-            'segment_id': segment.get('id'),
-            'text': segment.get('text', ''),
-            'start': round(start, 3),
-            'end': round(end, 3),
-        })
-        current_time = end + int(segment.get('pause_after_ms') or 0) / 1000
+        text = segment.get('text', '')
+        sub_texts = split_text(text, max_chars=subtitle_max_chars)
+        if not sub_texts:
+            sub_texts = [text]
+
+        total_chars = sum(len(t) for t in sub_texts)
+        segment_start = current_time
+
+        for sub_text in sub_texts:
+            char_ratio = len(sub_text) / total_chars if total_chars > 0 else 1 / len(sub_texts)
+            sub_duration = duration * char_ratio
+            sub_end = segment_start + sub_duration
+
+            timeline.append({
+                'index': len(timeline) + 1,
+                'segment_id': segment.get('id'),
+                'text': sub_text.strip(),
+                'start': round(segment_start, 3),
+                'end': round(sub_end, 3),
+            })
+            segment_start = sub_end
+
+        current_time = segment_start + int(segment.get('pause_after_ms') or 0) / 1000
     return timeline

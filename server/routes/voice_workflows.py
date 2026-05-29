@@ -160,8 +160,10 @@ def audition_voice_workflow_path(workflow_id):
 
     full_audio = concat_emotional_wavs(audio_items)
     audio_base64 = base64.b64encode(full_audio).decode('ascii')
+    subtitle_max_chars = (workflow.settings or {}).get('subtitle_max_chars', 20)
     timeline = build_emotional_subtitle_timeline(
-        [segment.to_dict() for segment in ordered_segments(workflow)], durations
+        [segment.to_dict() for segment in ordered_segments(workflow)], durations,
+        subtitle_max_chars=subtitle_max_chars,
     )
     return jsonify({
         'audio_base64': audio_base64,
@@ -231,7 +233,11 @@ def export_voice_workflow(workflow_id):
     db.session.commit()
 
     full_audio = concat_emotional_wavs(audio_items)
-    timeline = build_emotional_subtitle_timeline([segment.to_dict() for segment in ordered_segments(workflow)], durations)
+    subtitle_max_chars = (workflow.settings or {}).get('subtitle_max_chars', 20)
+    timeline = build_emotional_subtitle_timeline(
+        [segment.to_dict() for segment in ordered_segments(workflow)], durations,
+        subtitle_max_chars=subtitle_max_chars,
+    )
     srt_content = build_srt(timeline)
     manifest = build_workflow_manifest(workflow, manifest_segments, timeline)
     zip_bytes = build_zip_package(workflow.title, full_audio, srt_content, manifest, chunk_files)
