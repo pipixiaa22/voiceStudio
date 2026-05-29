@@ -7,11 +7,15 @@
           :title="store.workflow.title"
           :saving="store.saving"
           :exporting="store.exporting"
+          :default-voice-profile-id="store.workflow.default_voice_profile_id"
+          :voice-profiles="voiceProfiles"
           @update:title="store.workflow.title = $event"
+          @update:default-voice-profile-id="store.updateDefaultVoiceProfile($event)"
           @save="store.save()"
           @export="handleExport"
           @import-text="showImportModal = true"
           @auto-layout="handleAutoLayout"
+          @voice-profile-created="handleDefaultProfileCreated"
         />
       </div>
       <div class="workflow-left">
@@ -29,6 +33,8 @@
           ref="canvasRef"
           :segments="store.segments"
           :edges="store.edges"
+          :voice-profiles="voiceProfiles"
+          :default-voice-profile-id="store.workflow.default_voice_profile_id"
           @select="store.selectSegment($event)"
           @move="(id, pos) => store.updateSegment(id, pos)"
           @add-edge="handleAddEdge"
@@ -38,8 +44,11 @@
       <div class="workflow-right">
         <SegmentInspector
           :segment="store.selectedSegment"
+          :voice-profiles="voiceProfiles"
+          :default-voice-profile-id="store.workflow.default_voice_profile_id"
           @update="(id, patch) => store.updateSegment(id, patch)"
           @audition="handleAudition"
+          @profile-created="handleSegmentProfileCreated"
         />
       </div>
       <div class="workflow-bottom">
@@ -94,6 +103,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
+import { voiceProfilesApi } from '../api'
 import { useVoiceWorkflowsStore } from '../stores/voiceWorkflows'
 import { useSettings } from '../stores/settings'
 import { useTextsStore } from '../stores/texts'
@@ -124,9 +134,37 @@ const showImportModal = ref(false)
 const importTab = ref('paste')
 const importText = ref('')
 const importTextId = ref(null)
+const voiceProfiles = ref([])
 const allTexts = computed(() => textsStore.texts)
 
+const fetchVoiceProfiles = async () => {
+  try {
+    const { data } = await voiceProfilesApi.list({ active: 1 })
+    voiceProfiles.value = data
+  } catch {
+    voiceProfiles.value = []
+  }
+}
+
+const handleDefaultProfileCreated = async profile => {
+  await fetchVoiceProfiles()
+  store.updateDefaultVoiceProfile(profile.id)
+  message.success(`已创建并应用默认音色: ${profile.name}`)
+}
+
+const handleSegmentProfileCreated = async profile => {
+  await fetchVoiceProfiles()
+  if (store.selectedSegmentId) {
+    store.updateSegment(store.selectedSegmentId, { voice_profile_id: profile.id })
+  }
+  message.success(`已创建并应用音色: ${profile.name}`)
+}
+
 onMounted(async () => {
+  if (!textsStore.texts.length) {
+    textsStore.fetchTexts()
+  }
+  fetchVoiceProfiles()
   if (route.params.id && route.params.id !== 'new') {
     await store.fetch(route.params.id)
     return
@@ -143,6 +181,7 @@ const handleTextSelect = async (id) => {
   const text = await textsStore.fetchText(id)
   if (text) {
     importText.value = text.content
+    importTextId.value = id
   }
 }
 
@@ -153,6 +192,7 @@ const handleImportConfirm = () => {
     return
   }
   store.workflow.source_content = content
+  store.workflow.source_text_id = importTab.value === 'select' ? importTextId.value : null
   showImportModal.value = false
   importText.value = ''
   importTextId.value = null

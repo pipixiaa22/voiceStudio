@@ -5,6 +5,18 @@
       <a-form-item label="文本">
         <a-textarea :value="segment.text" @update:value="patch({ text: $event })" :autoSize="{ minRows: 3, maxRows: 6 }" />
       </a-form-item>
+      <a-form-item label="本句音色">
+        <VoiceProfileIdField
+          :model-value="segment.voice_profile_id"
+          :profiles="voiceProfiles"
+          :default-voice-profile-id="defaultVoiceProfileId"
+          allow-follow-default
+          can-create
+          :create-initial-values="{ audition_text: segment.text, scene: 'short_video' }"
+          @update:model-value="value => patch({ voice_profile_id: value })"
+          @created="$emit('profile-created', $event)"
+        />
+      </a-form-item>
       <a-form-item label="情绪">
         <a-select :value="segment.emotion" @change="value => patch({ emotion: value })">
           <a-select-option value="neutral">中性</a-select-option>
@@ -58,8 +70,14 @@
 </template>
 
 <script setup>
-const props = defineProps({ segment: { type: Object, default: null } })
-const emit = defineEmits(['update', 'audition'])
+import VoiceProfileIdField from './VoiceProfileIdField.vue'
+
+const props = defineProps({
+  segment: { type: Object, default: null },
+  voiceProfiles: { type: Array, default: () => [] },
+  defaultVoiceProfileId: { type: [Number, String, null], default: null },
+})
+const emit = defineEmits(['update', 'audition', 'profile-created'])
 const patch = patch => emit('update', props.segment.id, patch)
 </script>
 

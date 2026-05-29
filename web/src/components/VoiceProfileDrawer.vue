@@ -140,12 +140,13 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { voiceProfilesApi } from '../api'
 
 const props = defineProps({
   open: Boolean,
+  initialValues: { type: Object, default: () => ({}) },
 })
 
 const emit = defineEmits(['update:open', 'created'])
@@ -169,6 +170,17 @@ const form = reactive({
   voice_sample_mime: '',
   voice_sample_filename: '',
   consent_confirmed: false,
+})
+
+// Apply initial values when drawer opens
+watch(() => props.open, isOpen => {
+  if (isOpen && props.initialValues) {
+    for (const [key, value] of Object.entries(props.initialValues)) {
+      if (value !== undefined && value !== null && key in form) {
+        form[key] = value
+      }
+    }
+  }
 })
 
 const canSave = computed(() => {
