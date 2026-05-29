@@ -82,14 +82,57 @@ const flowNodes = computed(() => props.segments.map(segment => {
   }
 }))
 
-const flowEdges = computed(() => props.edges.map(edge => ({
-  id: String(edge.id || `e-${edge.source_segment_id}-${edge.target_segment_id}`),
-  source: String(edge.source_segment_id),
-  target: String(edge.target_segment_id),
-  type: 'smoothstep',
-  animated: false,
-  markerEnd: { type: 'arrowclosed', color: '#8e7f67' },
-})))
+// Build a position lookup for smart routing
+const nodePositionMap = computed(() => {
+  const map = new Map()
+  // Node dimensions (must match VoiceSegmentNode CSS)
+  const W = 190
+  const H = 100
+  for (const seg of props.segments) {
+    const x = seg.node_x || 0
+    const y = seg.node_y || 0
+    map.set(String(seg.id), { cx: x + W / 2, cy: y + H / 2 })
+  }
+  return map
+})
+
+// Smart routing: pick the shortest-path handle pair based on relative position
+const pickHandles = (sourceId, targetId) => {
+  const s = nodePositionMap.value.get(String(sourceId))
+  const t = nodePositionMap.value.get(String(targetId))
+  if (!s || !t) return { sourceHandle: 'right', targetHandle: 'left' }
+
+  const dx = t.cx - s.cx
+  const dy = t.cy - s.cy
+  const adx = Math.abs(dx)
+  const ady = Math.abs(dy)
+
+  if (adx >= ady) {
+    // Horizontal dominant: left-right connection
+    return dx >= 0
+      ? { sourceHandle: 'right', targetHandle: 'left' }
+      : { sourceHandle: 'left', targetHandle: 'right' }
+  } else {
+    // Vertical dominant: top-bottom connection
+    return dy >= 0
+      ? { sourceHandle: 'bottom', targetHandle: 'top' }
+      : { sourceHandle: 'top', targetHandle: 'bottom' }
+  }
+}
+
+const flowEdges = computed(() => props.edges.map(edge => {
+  const { sourceHandle, targetHandle } = pickHandles(edge.source_segment_id, edge.target_segment_id)
+  return {
+    id: String(edge.id || `e-${edge.source_segment_id}-${edge.target_segment_id}`),
+    source: String(edge.source_segment_id),
+    target: String(edge.target_segment_id),
+    sourceHandle,
+    targetHandle,
+    type: 'smoothstep',
+    animated: false,
+    markerEnd: { type: 'arrowclosed', color: '#8e7f67' },
+  }
+}))
 
 // Use Vue Flow's composable callback - this fires reliably for all node clicks
 onNodeClick(({ node }) => {

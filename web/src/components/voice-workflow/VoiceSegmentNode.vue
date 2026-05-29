@@ -6,6 +6,8 @@
       { selected, 'arrow-source': isArrowSource, 'arrow-mode': arrowMode }
     ]"
   >
+    <Handle id="left" type="target" :position="Position.Left" class="handle" />
+    <Handle id="top" type="target" :position="Position.Top" class="handle" />
     <div v-if="isArrowSource" class="arrow-badge source-badge">起点</div>
     <div v-if="arrowMode && !isArrowSource" class="arrow-badge target-badge">目标</div>
     <div class="node-header">
@@ -14,11 +16,14 @@
     </div>
     <p>{{ data.text }}</p>
     <div class="node-meta">{{ emotionLabel }} · {{ data.voice_profile_id ? `音色 ${data.voice_profile_id}` : '默认音色' }}</div>
+    <Handle id="right" type="source" :position="Position.Right" class="handle" />
+    <Handle id="bottom" type="source" :position="Position.Bottom" class="handle" />
   </div>
 </template>
 
 <script setup>
 import { computed } from 'vue'
+import { Handle, Position } from '@vue-flow/core'
 
 const props = defineProps({
   data: { type: Object, required: true },
@@ -50,14 +55,10 @@ const emotionLabel = computed(() => ({
 .voice-node:hover {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
-
-/* Selected state */
 .voice-node.selected {
   border-color: #1677ff;
   box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.2), 0 2px 8px rgba(0, 0, 0, 0.12);
 }
-
-/* Arrow mode: all cards get a subtle pulsing border to hint they're clickable */
 .voice-node.arrow-mode {
   animation: arrow-pulse 2s ease-in-out infinite;
 }
@@ -65,8 +66,6 @@ const emotionLabel = computed(() => ({
   0%, 100% { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06); }
   50% { box-shadow: 0 0 0 2px rgba(250, 140, 22, 0.15), 0 1px 3px rgba(0, 0, 0, 0.06); }
 }
-
-/* Arrow source: strong orange highlight */
 .voice-node.arrow-source {
   border-color: #fa8c16 !important;
   box-shadow: 0 0 0 3px rgba(250, 140, 22, 0.35), 0 2px 12px rgba(250, 140, 22, 0.15) !important;
@@ -79,7 +78,6 @@ const emotionLabel = computed(() => ({
 .voice-node p { margin: 8px 0; font-size: 13px; line-height: 1.5; }
 .node-meta { font-size: 11px; color: var(--text-muted); }
 
-/* Emotion colors */
 .emotion-angry_burst { border-color: #a6533f; }
 .emotion-cold { border-color: #5d6875; }
 .emotion-calm { border-color: #8e7f67; }
@@ -89,7 +87,6 @@ const emotionLabel = computed(() => ({
 .emotion-calm.selected,
 .emotion-suppressed.selected { border-color: #1677ff; }
 
-/* Badges */
 .arrow-badge {
   position: absolute;
   top: -10px;
@@ -100,15 +97,23 @@ const emotionLabel = computed(() => ({
   letter-spacing: 0.5px;
   z-index: 1;
 }
-.source-badge {
-  right: -6px;
-  background: #fa8c16;
-  color: #fff;
+.source-badge { right: -6px; background: #fa8c16; color: #fff; }
+.target-badge { left: -6px; background: #52c41a; color: #fff; opacity: 0.7; }
+
+/* Handle styling - invisible by default, shows on hover */
+.handle {
+  width: 8px !important;
+  height: 8px !important;
+  border: 2px solid #bfbfbf !important;
+  background: #fff !important;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease;
 }
-.target-badge {
-  left: -6px;
-  background: #52c41a;
-  color: #fff;
-  opacity: 0.7;
+.voice-node:hover .handle {
+  opacity: 1;
+}
+.handle:hover {
+  background: #1677ff !important;
+  border-color: #1677ff !important;
 }
 </style>
