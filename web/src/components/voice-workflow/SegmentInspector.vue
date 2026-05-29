@@ -1,0 +1,49 @@
+<template>
+  <div class="segment-inspector" v-if="segment">
+    <div class="panel-title">语句参数</div>
+    <a-form layout="vertical">
+      <a-form-item label="文本">
+        <a-textarea :value="segment.text" @update:value="patch({ text: $event })" :autoSize="{ minRows: 3, maxRows: 6 }" />
+      </a-form-item>
+      <a-form-item label="情绪">
+        <a-select :value="segment.emotion" @change="value => patch({ emotion: value })">
+          <a-select-option value="calm">平静</a-select-option>
+          <a-select-option value="suppressed">压抑</a-select-option>
+          <a-select-option value="angry_burst">爆发愤怒</a-select-option>
+          <a-select-option value="cold">冷漠</a-select-option>
+        </a-select>
+      </a-form-item>
+      <a-form-item label="强度">
+        <a-slider :value="segment.intensity" :min="0" :max="2" :step="0.05" @change="value => patch({ intensity: value })" />
+      </a-form-item>
+      <a-form-item label="语速">
+        <a-slider :value="segment.rate" :min="0.5" :max="2" :step="0.05" @change="value => patch({ rate: value })" />
+      </a-form-item>
+      <a-form-item label="音量 dB">
+        <a-slider :value="segment.volume_db" :min="-12" :max="12" :step="1" @change="value => patch({ volume_db: value })" />
+      </a-form-item>
+      <div class="pause-grid">
+        <a-form-item label="段前 ms">
+          <a-input-number :value="segment.pause_before_ms" :min="0" :max="10000" @change="value => patch({ pause_before_ms: value })" />
+        </a-form-item>
+        <a-form-item label="段后 ms">
+          <a-input-number :value="segment.pause_after_ms" :min="0" :max="10000" @change="value => patch({ pause_after_ms: value })" />
+        </a-form-item>
+      </div>
+      <a-button block @click="$emit('audition', segment)">试听这一句</a-button>
+    </a-form>
+  </div>
+  <div v-else class="empty-inspector">选择一个语句节点</div>
+</template>
+
+<script setup>
+const props = defineProps({ segment: { type: Object, default: null } })
+const emit = defineEmits(['update', 'audition'])
+const patch = patch => emit('update', props.segment.id, patch)
+</script>
+
+<style scoped>
+.panel-title { font-weight: 650; margin-bottom: var(--space-sm); }
+.pause-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-sm); }
+.empty-inspector { color: var(--text-muted); }
+</style>

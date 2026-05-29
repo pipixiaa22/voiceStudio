@@ -2,11 +2,52 @@
   <div class="voice-workflow-view">
     <div class="workflow-loading" v-if="store.loading">加载中</div>
     <div v-else class="workflow-shell">
-      <div class="workflow-top">配音工作台</div>
-      <div class="workflow-left">素材区</div>
-      <div class="workflow-canvas">画布区</div>
-      <div class="workflow-right">参数区</div>
-      <div class="workflow-bottom">时间线</div>
+      <div class="workflow-top">
+        <WorkflowToolbar
+          :title="store.workflow.title"
+          :saving="store.saving"
+          :exporting="store.exporting"
+          @update:title="store.workflow.title = $event"
+          @save="store.save()"
+          @export="handleExport"
+          @import-text="handleImportText"
+          @auto-layout="handleAutoLayout"
+        />
+      </div>
+      <div class="workflow-left">
+        <SourcePanel
+          :source-content="store.workflow.source_content"
+          @update:source-content="store.workflow.source_content = $event"
+          @plan="handlePlanSegments"
+          @add-segment="handleAddSegment"
+          @add-pause="handleAddPause"
+          @apply-emotion="handleApplyEmotion"
+        />
+      </div>
+      <div class="workflow-canvas">
+        <VoiceFlowCanvas
+          :segments="store.segments"
+          :edges="store.edges"
+          @select="store.selectSegment($event)"
+          @move="(id, pos) => store.updateSegment(id, pos)"
+        />
+      </div>
+      <div class="workflow-right">
+        <SegmentInspector
+          :segment="store.selectedSegment"
+          @update="(id, patch) => store.updateSegment(id, patch)"
+          @audition="handleAudition"
+        />
+      </div>
+      <div class="workflow-bottom">
+        <TimelineAuditionBar
+          :segments="store.orderedSegments"
+          :selected-segment-id="store.selectedSegmentId"
+          @select="store.selectSegment($event)"
+          @audition-selected="handleAuditionSelected"
+          @export="handleExport"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -15,6 +56,11 @@
 import { onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useVoiceWorkflowsStore } from '../stores/voiceWorkflows'
+import WorkflowToolbar from '../components/voice-workflow/WorkflowToolbar.vue'
+import SourcePanel from '../components/voice-workflow/SourcePanel.vue'
+import VoiceFlowCanvas from '../components/voice-workflow/VoiceFlowCanvas.vue'
+import SegmentInspector from '../components/voice-workflow/SegmentInspector.vue'
+import TimelineAuditionBar from '../components/voice-workflow/TimelineAuditionBar.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -28,6 +74,25 @@ onMounted(async () => {
   const data = await store.create({ title: '未命名配音工程', source_content: '' })
   router.replace(`/voice-workflows/${data.id}`)
 })
+
+const handleAutoLayout = () => {
+  store.segments.forEach((segment, index) => {
+    store.updateSegment(segment.id, {
+      node_x: 80 + index * 240,
+      node_y: 120 + (index % 2) * 80,
+      audio_status: segment.audio_status,
+    })
+  })
+}
+
+const handleImportText = () => { /* TODO: Task 7 */ }
+const handlePlanSegments = () => { /* TODO: Task 7 */ }
+const handleAddSegment = () => { /* TODO: Task 7 */ }
+const handleAddPause = () => { /* TODO: Task 7 */ }
+const handleApplyEmotion = () => { /* TODO: Task 7 */ }
+const handleAudition = () => { /* TODO: Task 7 */ }
+const handleAuditionSelected = () => { /* TODO: Task 7 */ }
+const handleExport = () => { /* TODO: Task 7 */ }
 </script>
 
 <style scoped>
