@@ -4,6 +4,7 @@ from server.models.folder import Folder
 from server.models.video import VideoTemplate, VideoJob, VideoAsset
 from server.models.provider import CustomProvider
 from server.models.discovery import DiscoverySource, DiscoveryQuery, DiscoveryItem, DiscoveryAnalysis
+from server.models.voice_workflow import VoiceWorkflow, VoiceWorkflowSegment, VoiceWorkflowEdge
 
 __all__ = [
     'db',
@@ -12,4 +13,5 @@ __all__ = [
     'VideoTemplate', 'VideoJob', 'VideoAsset',
     'CustomProvider',
     'DiscoverySource', 'DiscoveryQuery', 'DiscoveryItem', 'DiscoveryAnalysis',
+    'VoiceWorkflow', 'VoiceWorkflowSegment', 'VoiceWorkflowEdge',
 ]
