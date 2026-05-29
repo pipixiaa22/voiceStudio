@@ -28,7 +28,7 @@
       @edges-change="handleEdgesChange"
     >
       <template #node-segment="nodeProps">
-        <VoiceSegmentNode v-bind="nodeProps" @node-click="handleNodeClick" />
+        <VoiceSegmentNode v-bind="nodeProps" />
       </template>
       <Background />
       <Controls />
@@ -51,9 +51,10 @@ const props = defineProps({
   edges: { type: Array, default: () => [] },
 })
 const emit = defineEmits(['select', 'move', 'add-edge', 'remove-edge'])
-const { onNodesChange, setNodes, fitView } = useVueFlow()
 
-// Arrow mode state - managed locally to avoid prop sync issues
+const { onNodesChange, onNodeClick, setNodes, fitView } = useVueFlow()
+
+// Arrow mode state
 const localArrowMode = ref(false)
 const arrowSourceId = ref(null)
 
@@ -70,14 +71,13 @@ const toggleArrowMode = () => {
 
 const flowNodes = computed(() => props.segments.map(segment => {
   const segId = String(segment.id)
-  const isSource = localArrowMode.value && arrowSourceId.value === segId
   return {
     id: segId,
     type: 'segment',
     position: { x: segment.node_x || 0, y: segment.node_y || 0 },
     data: segment,
     selected: false,
-    isArrowSource: isSource,
+    isArrowSource: localArrowMode.value && arrowSourceId.value === segId,
     arrowMode: localArrowMode.value,
   }
 }))
@@ -91,8 +91,9 @@ const flowEdges = computed(() => props.edges.map(edge => ({
   markerEnd: { type: 'arrowclosed', color: '#8e7f67' },
 })))
 
-const handleNodeClick = (nodeId) => {
-  const clickedId = String(nodeId)
+// Use Vue Flow's composable callback - this fires reliably for all node clicks
+onNodeClick(({ node }) => {
+  const clickedId = node.id
 
   if (!localArrowMode.value) {
     emit('select', clickedId)
@@ -101,20 +102,17 @@ const handleNodeClick = (nodeId) => {
 
   // Arrow mode
   if (!arrowSourceId.value) {
-    // Step 1: set source
     arrowSourceId.value = clickedId
   } else if (arrowSourceId.value === clickedId) {
-    // Clicked same node: cancel
     arrowSourceId.value = null
   } else {
-    // Step 2: create edge from source to target
     emit('add-edge', {
       source_segment_id: arrowSourceId.value,
       target_segment_id: clickedId,
     })
     arrowSourceId.value = null
   }
-}
+})
 
 const handleNodesChange = changes => {
   changes.forEach(change => {
