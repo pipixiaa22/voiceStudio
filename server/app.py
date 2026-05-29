@@ -47,6 +47,8 @@ def create_app(test_config=None):
         app.register_blueprint(models_bp)
         from server.routes.discovery import discovery_bp
         app.register_blueprint(discovery_bp)
+        from server.routes.voice_workflows import voice_workflows_bp
+        app.register_blueprint(voice_workflows_bp)
 
     @app.route('/')
     def index():
