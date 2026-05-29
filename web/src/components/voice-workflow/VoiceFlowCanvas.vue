@@ -3,9 +3,12 @@
     <VueFlow
       :nodes="flowNodes"
       :edges="flowEdges"
+      :default-edge-options="{ type: 'smoothstep', animated: false }"
       fit-view-on-init
       @node-click="handleNodeClick"
       @nodes-change="handleNodesChange"
+      @connect="handleConnect"
+      @edges-change="handleEdgesChange"
     >
       <template #node-segment="nodeProps">
         <VoiceSegmentNode v-bind="nodeProps" />
@@ -30,7 +33,7 @@ const props = defineProps({
   segments: { type: Array, default: () => [] },
   edges: { type: Array, default: () => [] },
 })
-const emit = defineEmits(['select', 'move'])
+const emit = defineEmits(['select', 'move', 'add-edge', 'remove-edge'])
 const { onNodesChange, setNodes, fitView } = useVueFlow()
 
 const flowNodes = computed(() => props.segments.map(segment => ({
@@ -41,18 +44,35 @@ const flowNodes = computed(() => props.segments.map(segment => ({
 })))
 
 const flowEdges = computed(() => props.edges.map(edge => ({
-  id: String(edge.id || `${edge.source_segment_id}-${edge.target_segment_id}`),
+  id: String(edge.id || `e-${edge.source_segment_id}-${edge.target_segment_id}`),
   source: String(edge.source_segment_id),
   target: String(edge.target_segment_id),
+  type: 'smoothstep',
   animated: false,
+  markerEnd: { type: 'arrowclosed', color: '#8e7f67' },
 })))
 
-const handleNodeClick = ({ node }) => emit('select', Number(node.id) || node.id)
+const handleNodeClick = ({ node }) => emit('select', node.id)
 
 const handleNodesChange = changes => {
   changes.forEach(change => {
     if (change.type === 'position' && change.position) {
-      emit('move', Number(change.id) || change.id, { node_x: change.position.x, node_y: change.position.y })
+      emit('move', change.id, { node_x: change.position.x, node_y: change.position.y })
+    }
+  })
+}
+
+const handleConnect = params => {
+  emit('add-edge', {
+    source_segment_id: params.source,
+    target_segment_id: params.target,
+  })
+}
+
+const handleEdgesChange = changes => {
+  changes.forEach(change => {
+    if (change.type === 'remove' && change.id) {
+      emit('remove-edge', change.id)
     }
   })
 }

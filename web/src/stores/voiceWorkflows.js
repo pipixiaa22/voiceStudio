@@ -120,8 +120,52 @@ export const useVoiceWorkflowsStore = defineStore('voiceWorkflows', {
         ...extra,
       }
       this.segments.push(segment)
+      // Auto-create edge from the last segment to the new one
+      if (this.segments.length > 1) {
+        const prevSegment = this.segments[this.segments.length - 2]
+        const edgeId = `tmp-edge-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+        this.edges.push({
+          id: edgeId,
+          source_segment_id: prevSegment.id,
+          target_segment_id: id,
+          order_index: this.edges.length + 1,
+        })
+      }
       this.selectedSegmentId = id
       return segment
+    },
+    addEdge({ source_segment_id, target_segment_id }) {
+      // Prevent duplicate edges
+      const exists = this.edges.some(e =>
+        String(e.source_segment_id) === String(source_segment_id) &&
+        String(e.target_segment_id) === String(target_segment_id)
+      )
+      if (exists) return
+      // Prevent self-loops
+      if (String(source_segment_id) === String(target_segment_id)) return
+      const edgeId = `tmp-edge-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+      this.edges.push({
+        id: edgeId,
+        source_segment_id,
+        target_segment_id,
+        order_index: this.edges.length + 1,
+      })
+    },
+    removeEdge(edgeId) {
+      this.edges = this.edges.filter(e => String(e.id) !== String(edgeId))
+    },
+    rebuildEdges() {
+      // Rebuild edges from segment order
+      const sorted = [...this.segments].sort((a, b) => a.order_index - b.order_index)
+      this.edges = []
+      for (let i = 0; i < sorted.length - 1; i++) {
+        this.edges.push({
+          id: `tmp-edge-${Date.now()}-${i}`,
+          source_segment_id: sorted[i].id,
+          target_segment_id: sorted[i + 1].id,
+          order_index: i + 1,
+        })
+      }
     },
     selectSegment(id) {
       this.selectedSegmentId = id

@@ -31,6 +31,8 @@
           :edges="store.edges"
           @select="store.selectSegment($event)"
           @move="(id, pos) => store.updateSegment(id, pos)"
+          @add-edge="store.addEdge($event)"
+          @remove-edge="store.removeEdge($event)"
         />
       </div>
       <div class="workflow-right">
@@ -162,6 +164,8 @@ const handleAutoLayout = () => {
     })
     positionMap.set(String(segment.id), { x, y })
   })
+  // Rebuild edges to match new layout order
+  store.rebuildEdges()
   if (canvasRef.value?.setNodePositions) {
     canvasRef.value.setNodePositions(positionMap)
   }
