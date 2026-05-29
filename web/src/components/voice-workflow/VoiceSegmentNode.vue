@@ -1,5 +1,5 @@
 <template>
-  <div class="voice-node" :class="`emotion-${data.emotion || 'neutral'}`">
+  <div class="voice-node" :class="[`emotion-${data.emotion || 'neutral'}`, { selected }]">
     <div class="node-header">
       <strong>{{ data.order_index }}</strong>
       <span>{{ data.audio_status === 'ready' ? '已生成' : '需生成' }}</span>
@@ -12,7 +12,10 @@
 <script setup>
 import { computed } from 'vue'
 
-const props = defineProps({ data: { type: Object, required: true } })
+const props = defineProps({
+  data: { type: Object, required: true },
+  selected: { type: Boolean, default: false },
+})
 const emotionLabel = computed(() => ({
   calm: '平静',
   suppressed: '压抑',
@@ -23,7 +26,23 @@ const emotionLabel = computed(() => ({
 </script>
 
 <style scoped>
-.voice-node { width: 190px; border: 2px solid var(--surface-border-strong); border-radius: var(--radius-md); background: var(--surface); padding: 10px; box-shadow: var(--shadow-sm); }
+.voice-node {
+  width: 190px;
+  border: 2px solid var(--surface-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: 10px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  cursor: pointer;
+}
+.voice-node:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+.voice-node.selected {
+  border-color: #1677ff;
+  box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.2), 0 2px 8px rgba(0, 0, 0, 0.12);
+}
 .node-header { display: flex; justify-content: space-between; font-size: 12px; }
 .voice-node p { margin: 8px 0; font-size: 13px; line-height: 1.5; }
 .node-meta { font-size: 11px; color: var(--text-muted); }
@@ -31,4 +50,8 @@ const emotionLabel = computed(() => ({
 .emotion-cold { border-color: #5d6875; }
 .emotion-calm { border-color: #8e7f67; }
 .emotion-suppressed { border-color: #6f665c; }
+.emotion-angry_burst.selected { border-color: #1677ff; }
+.emotion-cold.selected { border-color: #1677ff; }
+.emotion-calm.selected { border-color: #1677ff; }
+.emotion-suppressed.selected { border-color: #1677ff; }
 </style>

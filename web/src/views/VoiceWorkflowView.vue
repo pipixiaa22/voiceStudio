@@ -168,16 +168,18 @@ const handleAutoLayout = () => {
 }
 
 const handleAddSegment = () => {
-  store.addSegment('新语句。', { emotion: 'calm' })
+  const seg = store.addSegment('新语句。', { emotion: 'calm' })
+  message.success(`已添加语句节点 #${seg.order_index}`)
 }
 
 const handleAddPause = () => {
-  store.addSegment('……', {
+  const seg = store.addSegment('……', {
     emotion: 'suppressed',
     pause_before_ms: 500,
     pause_after_ms: 500,
     transition: 'normal',
   })
+  message.success(`已添加停顿节点 #${seg.order_index}`)
 }
 
 const handleApplyEmotion = (emotion) => {
@@ -194,7 +196,8 @@ const handleApplyEmotion = (emotion) => {
   const preset = presets[emotion]
   if (preset) {
     store.updateSegment(store.selectedSegmentId, preset)
-    message.success(`已应用情绪预设: ${emotion}`)
+    const labels = { calm: '平静', suppressed: '压抑', angry_burst: '爆发愤怒', cold: '冷漠' }
+    message.success(`已应用情绪: ${labels[emotion] || emotion}`)
   }
 }
 
