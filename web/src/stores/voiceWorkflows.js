@@ -83,10 +83,16 @@ export const useVoiceWorkflowsStore = defineStore('voiceWorkflows', {
       }
     },
     updateSegment(id, patch) {
+      const AUDIO_FIELDS = new Set([
+        'text', 'emotion', 'intensity', 'rate', 'pitch',
+        'volume_db', 'pause_before_ms', 'pause_after_ms',
+        'transition', 'voice_profile_id', 'delivery_instruction',
+      ])
       const index = this.segments.findIndex(segment => segment.id === id)
       if (index !== -1) {
+        const affectsAudio = Object.keys(patch).some(key => AUDIO_FIELDS.has(key))
         this.segments[index] = Object.assign({}, this.segments[index], patch, {
-          audio_status: patch.audio_status || 'missing',
+          audio_status: affectsAudio ? 'missing' : (patch.audio_status || this.segments[index].audio_status),
         })
       }
     },

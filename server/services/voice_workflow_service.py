@@ -75,7 +75,8 @@ def _segment_from_payload(workflow_id: int, payload: dict, index: int) -> VoiceW
         transition=payload.get('transition') or 'normal',
         delivery_instruction=payload.get('delivery_instruction') or '',
         voice_profile_id=payload.get('voice_profile_id'),
-        audio_status='missing',
+        audio_status=payload.get('audio_status') or 'missing',
+        audio_fingerprint=payload.get('audio_fingerprint'),
     )
 
 
