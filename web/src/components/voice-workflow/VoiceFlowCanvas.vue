@@ -117,6 +117,7 @@ onNodeClick(({ node }) => {
 const handleNodesChange = changes => {
   changes.forEach(change => {
     if (change.type === 'position' && change.position) {
+      // Keep ID as string - don't Number() convert, it breaks tmp-* IDs
       emit('move', change.id, { node_x: change.position.x, node_y: change.position.y })
     }
   })

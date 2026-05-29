@@ -23,7 +23,7 @@ export const useVoiceWorkflowsStore = defineStore('voiceWorkflows', {
   }),
   getters: {
     selectedSegment(state) {
-      return state.segments.find(segment => segment.id === state.selectedSegmentId) || null
+      return state.segments.find(segment => String(segment.id) === String(state.selectedSegmentId)) || null
     },
     orderedSegments(state) {
       return Array.from(state.segments).sort((a, b) => a.order_index - b.order_index)
@@ -66,11 +66,15 @@ export const useVoiceWorkflowsStore = defineStore('voiceWorkflows', {
     async save() {
       this.saving = true
       try {
-        const segmentIndexById = new Map(this.segments.map((segment, index) => [segment.id, index]))
-        const payloadEdges = this.edges.map(edge => Object.assign({}, edge, {
-          source_client_id: segmentIndexById.get(edge.source_segment_id),
-          target_client_id: segmentIndexById.get(edge.target_segment_id),
-        }))
+        // Build index map with Number keys to handle both int (DB) and string (tmp) IDs
+        const segmentIndexById = new Map(this.segments.map((segment, index) => [Number(segment.id), index]))
+        const payloadEdges = this.edges
+          .map(edge => ({
+            ...edge,
+            source_client_id: segmentIndexById.get(Number(edge.source_segment_id)),
+            target_client_id: segmentIndexById.get(Number(edge.target_segment_id)),
+          }))
+          .filter(edge => edge.source_client_id != null && edge.target_client_id != null)
         const { data } = await voiceWorkflowsApi.update(this.workflow.id, {
           workflow: this.workflow,
           segments: this.segments,
@@ -88,7 +92,8 @@ export const useVoiceWorkflowsStore = defineStore('voiceWorkflows', {
         'volume_db', 'pause_before_ms', 'pause_after_ms',
         'transition', 'voice_profile_id', 'delivery_instruction',
       ])
-      const index = this.segments.findIndex(segment => segment.id === id)
+      // Use String comparison to handle both int (DB) and string (tmp) IDs
+      const index = this.segments.findIndex(segment => String(segment.id) === String(id))
       if (index !== -1) {
         const affectsAudio = Object.keys(patch).some(key => AUDIO_FIELDS.has(key))
         this.segments[index] = Object.assign({}, this.segments[index], patch, {
@@ -168,6 +173,7 @@ export const useVoiceWorkflowsStore = defineStore('voiceWorkflows', {
       }
     },
     selectSegment(id) {
+      // Store as-is (string or number), comparisons use String()
       this.selectedSegmentId = id
     },
     async planSegments() {
