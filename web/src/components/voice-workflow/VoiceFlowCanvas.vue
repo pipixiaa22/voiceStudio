@@ -3,17 +3,20 @@
     <div class="canvas-toolbar">
       <button
         class="mode-btn"
-        :class="{ active: arrowMode }"
-        @click="$emit('toggle-arrow-mode')"
+        :class="{ active: localArrowMode }"
+        @click="toggleArrowMode"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
           <line x1="5" y1="12" x2="19" y2="12"/>
           <polyline points="12 5 19 12 12 19"/>
         </svg>
-        {{ arrowMode ? '退出箭头模式' : '箭头模式' }}
+        {{ localArrowMode ? '退出箭头模式' : '箭头模式' }}
       </button>
-      <span v-if="arrowMode" class="mode-hint">
-        {{ arrowSource ? '点击目标卡片完成连线' : '点击起始卡片' }}
+      <span v-if="localArrowMode" class="mode-hint">
+        {{ arrowSourceId ? '② 点击目标卡片完成连线' : '① 点击起始卡片' }}
+      </span>
+      <span v-if="localArrowMode && arrowSourceId" class="mode-source">
+        起点: #{{ sourceOrderIndex }}
       </span>
     </div>
     <VueFlow
@@ -35,7 +38,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
@@ -47,20 +50,38 @@ import VoiceSegmentNode from './VoiceSegmentNode.vue'
 const props = defineProps({
   segments: { type: Array, default: () => [] },
   edges: { type: Array, default: () => [] },
-  arrowMode: { type: Boolean, default: false },
-  arrowSource: { type: [String, Number], default: null },
 })
-const emit = defineEmits(['select', 'move', 'add-edge', 'remove-edge', 'toggle-arrow-mode', 'arrow-source'])
+const emit = defineEmits(['select', 'move', 'add-edge', 'remove-edge'])
 const { onNodesChange, setNodes, fitView } = useVueFlow()
 
-const flowNodes = computed(() => props.segments.map(segment => ({
-  id: String(segment.id),
-  type: 'segment',
-  position: { x: segment.node_x || 0, y: segment.node_y || 0 },
-  data: segment,
-  selected: false,
-  isArrowSource: props.arrowMode && String(props.arrowSource) === String(segment.id),
-})))
+// Arrow mode state - managed locally to avoid prop sync issues
+const localArrowMode = ref(false)
+const arrowSourceId = ref(null)
+
+const sourceOrderIndex = computed(() => {
+  if (!arrowSourceId.value) return null
+  const seg = props.segments.find(s => String(s.id) === String(arrowSourceId.value))
+  return seg?.order_index ?? '?'
+})
+
+const toggleArrowMode = () => {
+  localArrowMode.value = !localArrowMode.value
+  arrowSourceId.value = null
+}
+
+const flowNodes = computed(() => props.segments.map(segment => {
+  const segId = String(segment.id)
+  const isSource = localArrowMode.value && arrowSourceId.value === segId
+  return {
+    id: segId,
+    type: 'segment',
+    position: { x: segment.node_x || 0, y: segment.node_y || 0 },
+    data: segment,
+    selected: false,
+    isArrowSource: isSource,
+    arrowMode: localArrowMode.value,
+  }
+}))
 
 const flowEdges = computed(() => props.edges.map(edge => ({
   id: String(edge.id || `e-${edge.source_segment_id}-${edge.target_segment_id}`),
@@ -72,23 +93,27 @@ const flowEdges = computed(() => props.edges.map(edge => ({
 })))
 
 const handleNodeClick = ({ node }) => {
-  if (props.arrowMode) {
-    if (!props.arrowSource) {
-      // First click: set source
-      emit('arrow-source', node.id)
-    } else if (String(props.arrowSource) !== String(node.id)) {
-      // Second click on different node: create edge
-      emit('add-edge', {
-        source_segment_id: props.arrowSource,
-        target_segment_id: node.id,
-      })
-      emit('arrow-source', null)
-    } else {
-      // Click on same node: cancel
-      emit('arrow-source', null)
-    }
+  const clickedId = node.id
+
+  if (!localArrowMode.value) {
+    emit('select', clickedId)
+    return
+  }
+
+  // Arrow mode
+  if (!arrowSourceId.value) {
+    // Step 1: set source
+    arrowSourceId.value = clickedId
+  } else if (arrowSourceId.value === clickedId) {
+    // Clicked same node: cancel
+    arrowSourceId.value = null
   } else {
-    emit('select', node.id)
+    // Step 2: create edge from source to target
+    emit('add-edge', {
+      source_segment_id: arrowSourceId.value,
+      target_segment_id: clickedId,
+    })
+    arrowSourceId.value = null
   }
 }
 
@@ -158,5 +183,12 @@ defineExpose({ setNodePositions, fitView })
   font-size: 11px;
   color: #fa8c16;
   font-weight: 500;
+}
+.mode-source {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: rgba(250, 140, 22, 0.08);
+  padding: 1px 6px;
+  border-radius: 4px;
 }
 </style>
