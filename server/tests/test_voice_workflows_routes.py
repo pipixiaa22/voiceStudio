@@ -165,3 +165,43 @@ def test_audition_path_returns_full_audio(client, monkeypatch):
     assert data['segment_count'] == 2
     assert data['total_duration'] > 0
     assert len(data['timeline']) == 2
+
+
+def test_export_reuses_cache_on_second_call(client, monkeypatch, tmp_path):
+    """Second export with same params should not re-synthesize."""
+    call_count = [0]
+
+    created = client.post('/api/voice-workflows', json={
+        'title': '缓存测试',
+        'source_content': '测试句。',
+    }).get_json()
+
+    monkeypatch.setattr('server.routes.voice_workflows.repo.get_profile_by_id', lambda pid: None)
+    monkeypatch.setattr('server.routes.voice_workflows.CACHE_DIR', str(tmp_path))
+
+    class CountingProvider:
+        def __init__(self, api_key):
+            pass
+
+        def synthesize(self, **kwargs):
+            call_count[0] += 1
+            return base64.b64encode(_make_wav()).decode('ascii')
+
+    monkeypatch.setattr('server.services.emotional_tts.TTSProvider', CountingProvider)
+
+    # First export - should synthesize
+    resp1 = client.post(f"/api/voice-workflows/{created['id']}/export", json={
+        'api_key': 'test-key',
+        'voice_description': 'test',
+    })
+    assert resp1.status_code == 200
+    first_count = call_count[0]
+    assert first_count > 0
+
+    # Second export - should use cache
+    resp2 = client.post(f"/api/voice-workflows/{created['id']}/export", json={
+        'api_key': 'test-key',
+        'voice_description': 'test',
+    })
+    assert resp2.status_code == 200
+    assert call_count[0] == first_count  # no new synthesize calls

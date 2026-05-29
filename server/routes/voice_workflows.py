@@ -1,5 +1,6 @@
 import base64
 import io
+import os
 from urllib.parse import quote
 
 from flask import Blueprint, jsonify, request, send_file
@@ -7,11 +8,13 @@ from flask import Blueprint, jsonify, request, send_file
 from server.models import db
 from server.models.voice_workflow import VoiceWorkflow, VoiceWorkflowEdge, VoiceWorkflowSegment
 from server.services import voice_profile_repository as repo
-from server.services.audio_package import build_srt, build_zip_package
+from server.services.audio_package import build_srt, build_zip_package, read_wav_info
 from server.services.audio_postprocess import concat_emotional_wavs, build_emotional_subtitle_timeline
 from server.services.emotional_tts import synthesize_emotion_segment
 from server.services.emotion_planner import plan_workflow_segments
-from server.services.voice_workflow_service import build_workflow_manifest, ordered_segments, save_workflow_snapshot
+from server.services.voice_workflow_service import build_audio_fingerprint, build_workflow_manifest, ordered_segments, save_workflow_snapshot
+
+CACHE_DIR = 'outputs/voice_workflow_cache'
 
 voice_workflows_bp = Blueprint('voice_workflows', __name__)
 
@@ -185,20 +188,47 @@ def export_voice_workflow(workflow_id):
         profile_id = segment.voice_profile_id or workflow.default_voice_profile_id
         profile = repo.get_profile_by_id(int(profile_id)) if profile_id else None
         model = (profile or {}).get('model') or 'mimo-v2.5-tts-voicedesign'
-        result = synthesize_emotion_segment(
-            api_key,
-            segment.to_dict(),
-            voice_profile=profile,
-            fallback_voice_description=data.get('voice_description', ''),
-            style_tags=(profile or {}).get('style_tags'),
-            model=model,
-            voice=_profile_audio_voice(profile),
+        segment_dict = segment.to_dict()
+        expected_fingerprint = build_audio_fingerprint({**segment_dict, 'model': model})
+
+        cache_path = os.path.join(CACHE_DIR, str(workflow_id), f'{segment.id}.wav')
+        is_cached = (
+            segment.audio_status == 'ready'
+            and segment.audio_fingerprint == expected_fingerprint
+            and os.path.exists(cache_path)
         )
+
+        if is_cached:
+            audio_bytes = open(cache_path, 'rb').read()
+            info = read_wav_info(audio_bytes)
+            duration = info['frames'] / info['framerate']
+        else:
+            result = synthesize_emotion_segment(
+                api_key,
+                segment_dict,
+                voice_profile=profile,
+                fallback_voice_description=data.get('voice_description', ''),
+                style_tags=(profile or {}).get('style_tags'),
+                model=model,
+                voice=_profile_audio_voice(profile),
+            )
+            audio_bytes = result['audio_bytes']
+            info = result['wav_info']
+            duration = result['duration']
+            os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+            with open(cache_path, 'wb') as f:
+                f.write(audio_bytes)
+            segment.audio_path = cache_path
+            segment.audio_fingerprint = expected_fingerprint
+            segment.audio_status = 'ready'
+
         filename = f'segments/{index:03d}.wav'
-        chunk_files.append((filename, result['audio_bytes']))
-        audio_items.append({'wav_info': result['wav_info'], 'segment': segment.to_dict()})
-        durations.append(result['duration'])
-        manifest_segments.append({**segment.to_dict(), 'filename': filename, 'duration': round(result['duration'], 3)})
+        chunk_files.append((filename, audio_bytes))
+        audio_items.append({'wav_info': info, 'segment': segment_dict})
+        durations.append(duration)
+        manifest_segments.append({**segment_dict, 'filename': filename, 'duration': round(duration, 3)})
+
+    db.session.commit()
 
     full_audio = concat_emotional_wavs(audio_items)
     timeline = build_emotional_subtitle_timeline([segment.to_dict() for segment in ordered_segments(workflow)], durations)
