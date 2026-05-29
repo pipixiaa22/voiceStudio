@@ -5,6 +5,7 @@
       `emotion-${data.emotion || 'neutral'}`,
       { selected, 'arrow-source': isArrowSource, 'arrow-mode': arrowMode }
     ]"
+    @click.stop="$emit('node-click', data.id)"
   >
     <div v-if="isArrowSource" class="arrow-badge source-badge">起点</div>
     <div v-if="arrowMode && !isArrowSource" class="arrow-badge target-badge">目标</div>
@@ -26,6 +27,7 @@ const props = defineProps({
   isArrowSource: { type: Boolean, default: false },
   arrowMode: { type: Boolean, default: false },
 })
+defineEmits(['node-click'])
 const emotionLabel = computed(() => ({
   calm: '平静',
   suppressed: '压抑',

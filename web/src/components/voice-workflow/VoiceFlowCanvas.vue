@@ -24,12 +24,11 @@
       :edges="flowEdges"
       :default-edge-options="{ type: 'smoothstep', animated: false }"
       fit-view-on-init
-      @node-click="handleNodeClick"
       @nodes-change="handleNodesChange"
       @edges-change="handleEdgesChange"
     >
       <template #node-segment="nodeProps">
-        <VoiceSegmentNode v-bind="nodeProps" />
+        <VoiceSegmentNode v-bind="nodeProps" @node-click="handleNodeClick" />
       </template>
       <Background />
       <Controls />
@@ -92,8 +91,8 @@ const flowEdges = computed(() => props.edges.map(edge => ({
   markerEnd: { type: 'arrowclosed', color: '#8e7f67' },
 })))
 
-const handleNodeClick = ({ node }) => {
-  const clickedId = node.id
+const handleNodeClick = (nodeId) => {
+  const clickedId = String(nodeId)
 
   if (!localArrowMode.value) {
     emit('select', clickedId)
