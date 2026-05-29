@@ -89,10 +89,11 @@ def save_workflow_snapshot(workflow_id: int, payload: dict) -> dict:
     workflow.default_voice_profile_id = workflow_data.get('default_voice_profile_id', workflow.default_voice_profile_id)
     workflow.settings = workflow_data.get('settings', workflow.settings)
 
-    for segment in list(workflow.segments):
-        db.session.delete(segment)
+    # Delete edges first — MySQL FK constraint requires edges gone before segments
     for edge in list(workflow.edges):
         db.session.delete(edge)
+    for segment in list(workflow.segments):
+        db.session.delete(segment)
     db.session.flush()
 
     created_segments = []
