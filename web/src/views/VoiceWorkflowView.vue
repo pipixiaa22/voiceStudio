@@ -55,7 +55,9 @@
 <script setup>
 import { onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { message } from 'ant-design-vue'
 import { useVoiceWorkflowsStore } from '../stores/voiceWorkflows'
+import { useSettings } from '../stores/settings'
 import WorkflowToolbar from '../components/voice-workflow/WorkflowToolbar.vue'
 import SourcePanel from '../components/voice-workflow/SourcePanel.vue'
 import VoiceFlowCanvas from '../components/voice-workflow/VoiceFlowCanvas.vue'
@@ -65,6 +67,8 @@ import TimelineAuditionBar from '../components/voice-workflow/TimelineAuditionBa
 const route = useRoute()
 const router = useRouter()
 const store = useVoiceWorkflowsStore()
+const { ttsKey } = useSettings()
+const fallbackVoiceDescription = '稳定自然的中文旁白声线，吐字清晰，情绪服从每句设置。'
 
 onMounted(async () => {
   if (route.params.id && route.params.id !== 'new') {
@@ -85,14 +89,57 @@ const handleAutoLayout = () => {
   })
 }
 
-const handleImportText = () => { /* TODO: Task 7 */ }
-const handlePlanSegments = () => { /* TODO: Task 7 */ }
-const handleAddSegment = () => { /* TODO: Task 7 */ }
-const handleAddPause = () => { /* TODO: Task 7 */ }
-const handleApplyEmotion = () => { /* TODO: Task 7 */ }
-const handleAudition = () => { /* TODO: Task 7 */ }
-const handleAuditionSelected = () => { /* TODO: Task 7 */ }
-const handleExport = () => { /* TODO: Task 7 */ }
+const handleImportText = () => { /* deferred scope */ }
+const handleAddSegment = () => { /* deferred scope */ }
+const handleAddPause = () => { /* deferred scope */ }
+const handleApplyEmotion = () => { /* deferred scope */ }
+
+const handlePlanSegments = async () => {
+  if (!store.workflow.source_content.trim()) {
+    message.warning('请先输入源文本')
+    return
+  }
+  await store.planSegments()
+  message.success('已生成语句节点')
+}
+
+const playBase64Audio = audioBase64 => {
+  const binary = atob(audioBase64)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }))
+  const audio = new Audio(url)
+  audio.onended = () => URL.revokeObjectURL(url)
+  audio.play()
+}
+
+const handleAudition = async segment => {
+  if (!ttsKey.value) {
+    message.warning('请先配置 TTS API Key')
+    return
+  }
+  const data = await store.auditionSegment(segment, ttsKey.value, fallbackVoiceDescription)
+  playBase64Audio(data.audio_base64)
+}
+
+const handleAuditionSelected = async () => {
+  if (store.selectedSegment) await handleAudition(store.selectedSegment)
+}
+
+const handleExport = async () => {
+  if (!ttsKey.value) {
+    message.warning('请先配置 TTS API Key')
+    return
+  }
+  const response = await store.exportPackage(ttsKey.value, fallbackVoiceDescription)
+  const url = URL.createObjectURL(new Blob([response.data], { type: 'application/zip' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${store.workflow.title || '配音工作流'}_配音工作流.zip`
+  link.click()
+  URL.revokeObjectURL(url)
+  message.success('导出完成')
+}
 </script>
 
 <style scoped>

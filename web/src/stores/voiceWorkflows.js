@@ -66,10 +66,15 @@ export const useVoiceWorkflowsStore = defineStore('voiceWorkflows', {
     async save() {
       this.saving = true
       try {
+        const segmentIndexById = new Map(this.segments.map((segment, index) => [segment.id, index]))
+        const payloadEdges = this.edges.map(edge => Object.assign({}, edge, {
+          source_client_id: segmentIndexById.get(edge.source_segment_id),
+          target_client_id: segmentIndexById.get(edge.target_segment_id),
+        }))
         const { data } = await voiceWorkflowsApi.update(this.workflow.id, {
           workflow: this.workflow,
           segments: this.segments,
-          edges: this.edges,
+          edges: payloadEdges,
         })
         this.applySnapshot(data)
         return data
@@ -87,6 +92,52 @@ export const useVoiceWorkflowsStore = defineStore('voiceWorkflows', {
     },
     selectSegment(id) {
       this.selectedSegmentId = id
+    },
+    async planSegments() {
+      const { data } = await voiceWorkflowsApi.planSegments(this.workflow.id, {
+        content: this.workflow.source_content,
+        max_chars: this.workflow.settings.segment_max_chars || 80,
+      })
+      this.segments = data.segments.map((segment, index) => Object.assign({}, segment, {
+        id: `tmp-${Date.now()}-${index}`,
+      }))
+      this.edges = this.segments.slice(0, -1).map((segment, index) => ({
+        id: `tmp-edge-${index}`,
+        source_client_id: index,
+        target_client_id: index + 1,
+        source_segment_id: segment.id,
+        target_segment_id: this.segments[index + 1].id,
+        order_index: index + 1,
+      }))
+      this.selectedSegmentId = this.segments[0]?.id || null
+    },
+    async auditionSegment(segment, apiKey, voiceDescription) {
+      if (typeof segment.id === 'string') {
+        await this.save()
+        segment = this.selectedSegment
+      }
+      const { data } = await voiceWorkflowsApi.auditionSegment(this.workflow.id, segment.id, {
+        api_key: apiKey,
+        voice_description: voiceDescription,
+      })
+      this.updateSegment(segment.id, {
+        audio_status: 'ready',
+        audio_fingerprint: data.fingerprint,
+      })
+      return data
+    },
+    async exportPackage(apiKey, voiceDescription) {
+      this.exporting = true
+      try {
+        await this.save()
+        return await voiceWorkflowsApi.exportPackage(this.workflow.id, {
+          api_key: apiKey,
+          voice_description: voiceDescription,
+          export_options: { include_segment_wavs: true, reuse_cache: true },
+        })
+      } finally {
+        this.exporting = false
+      }
     },
   },
 })
