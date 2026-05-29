@@ -267,6 +267,13 @@
           <p class="generate-hint">将生成完整音频 + 同步字幕 + 语音块</p>
         </div>
 
+        <div class="workbench-action" style="text-align: center; margin-bottom: var(--space-lg);">
+          <a-button block @click="handleOpenWorkbench" :disabled="!sourceContent.trim()">
+            打开高级编排（配音工作台）
+          </a-button>
+          <p class="generate-hint">将当前文本和音色设置导入配音工作台，支持逐句编辑</p>
+        </div>
+
         <!-- Advanced Options -->
         <a-collapse class="advanced-collapse">
           <a-collapse-panel key="advanced" header="高级选项">
@@ -292,7 +299,8 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { textsApi, ttsApi, voiceProfilesApi } from '../api'
+import { useRouter } from 'vue-router'
+import { textsApi, ttsApi, voiceProfilesApi, voiceWorkflowsApi } from '../api'
 import { useTextsStore } from '../stores/texts'
 import { useSettings } from '../stores/settings'
 import VoiceProfileSelector from './VoiceProfileSelector.vue'
@@ -303,6 +311,7 @@ const props = defineProps({
 })
 defineEmits(['update:open'])
 
+const router = useRouter()
 const textsStore = useTextsStore()
 const { ttsKey, llmKey, hasTtsKey, hasLlmKey, systemPrompt } = useSettings()
 
@@ -568,6 +577,21 @@ const handleBatchGenerate = async () => {
     message.error('导出失败')
   } finally {
     batchGenerating.value = false
+  }
+}
+
+const handleOpenWorkbench = async () => {
+  try {
+    const { data } = await voiceWorkflowsApi.create({
+      title: sourceTitle.value || '未命名配音工程',
+      source_content: sourceContent.value,
+      default_voice_profile_id: selectedProfile.value?.id || null,
+    })
+    emit('update:open', false)
+    router.push(`/voice-workflows/${data.id}`)
+    message.success('已创建配音工程')
+  } catch (e) {
+    message.error(e.response?.data?.error || '创建配音工程失败')
   }
 }
 

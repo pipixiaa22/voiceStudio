@@ -3,6 +3,31 @@
     <h4>音频设置</h4>
 
     <a-form layout="vertical">
+      <a-divider orientation="left">旁白来源</a-divider>
+
+      <a-form-item>
+        <a-radio-group v-model:value="localOptions.voice_source" button-style="solid">
+          <a-radio-button value="generate">实时生成</a-radio-button>
+          <a-radio-button value="workflow">配音工程</a-radio-button>
+        </a-radio-group>
+      </a-form-item>
+
+      <template v-if="localOptions.voice_source === 'workflow'">
+        <a-form-item label="选择配音工程">
+          <a-select
+            v-model:value="localOptions.voice_workflow_id"
+            placeholder="选择一个配音工程"
+            show-search
+            :filter-option="filterWorkflowOption"
+            style="width: 100%"
+          >
+            <a-select-option v-for="wf in workflows" :key="wf.id" :value="wf.id">
+              {{ wf.title }} ({{ wf.updated_at?.slice(0, 10) }})
+            </a-select-option>
+          </a-select>
+        </a-form-item>
+      </template>
+
       <a-divider orientation="left">背景音乐 (BGM)</a-divider>
 
       <a-form-item>
@@ -85,7 +110,8 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted } from 'vue'
+import { voiceWorkflowsApi } from '../../api'
 
 const props = defineProps({
   audioOptions: { type: Object, default: () => ({}) },
@@ -93,12 +119,30 @@ const props = defineProps({
 
 const emit = defineEmits(['update:audioOptions', 'prev', 'next'])
 
-const localOptions = ref({ ...props.audioOptions })
+const localOptions = ref({
+  voice_source: 'generate',
+  voice_workflow_id: null,
+  ...props.audioOptions,
+})
 const bgmFile = ref(null)
+const workflows = ref([])
 
 watch(() => props.audioOptions, (val) => {
-  localOptions.value = { ...val }
+  localOptions.value = { voice_source: 'generate', voice_workflow_id: null, ...val }
 })
+
+onMounted(async () => {
+  try {
+    const { data } = await voiceWorkflowsApi.list()
+    workflows.value = data
+  } catch {
+    workflows.value = []
+  }
+})
+
+const filterWorkflowOption = (input, option) => {
+  return option.children[0].children.toLowerCase().includes(input.toLowerCase())
+}
 
 const handleBgmUpload = (file) => {
   bgmFile.value = file
