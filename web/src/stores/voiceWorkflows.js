@@ -66,6 +66,7 @@ export const useVoiceWorkflowsStore = defineStore('voiceWorkflows', {
       }
     },
     async save() {
+      if (!this.workflow.id) return null
       this.saving = true
       try {
         // Keep keys as strings so temporary ids like "tmp-..." do not collapse to NaN.
@@ -208,7 +209,7 @@ export const useVoiceWorkflowsStore = defineStore('voiceWorkflows', {
       this.selectedSegmentId = this.segments[0]?.id || null
     },
     async auditionPath(apiKey, voiceDescription) {
-      if (this.auditioningPath) return null
+      if (this.auditioningPath || !this.workflow.id) return null
       this.auditioningPath = true
       try {
         const { data } = await voiceWorkflowsApi.auditionPath(this.workflow.id, {
@@ -221,9 +222,11 @@ export const useVoiceWorkflowsStore = defineStore('voiceWorkflows', {
       }
     },
     async auditionSegment(segment, apiKey, voiceDescription) {
+      if (!this.workflow.id) return null
       if (typeof segment.id === 'string') {
         await this.save()
         segment = this.selectedSegment
+        if (!segment) return null
       }
       const { data } = await voiceWorkflowsApi.auditionSegment(this.workflow.id, segment.id, {
         api_key: apiKey,

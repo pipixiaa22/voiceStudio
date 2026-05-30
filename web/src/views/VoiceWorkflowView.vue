@@ -283,7 +283,7 @@ const handleAudition = async segment => {
     return
   }
   const data = await store.auditionSegment(segment, ttsKey.value, fallbackVoiceDescription)
-  playBase64Audio(data.audio_base64)
+  if (data) playBase64Audio(data.audio_base64)
 }
 
 const handleAuditionSelected = async () => {
