@@ -107,8 +107,11 @@ def build_segment_delivery_instruction(segment: EmotionSegment | dict) -> str:
     transition = get('transition', 'normal')
     rate = float(get('rate', 1.0))
     volume_db = float(get('volume_db', 0.0))
+    intensity = float(get('intensity', 0.5))
+    pitch = float(get('pitch', 0.0))
     custom = (get('delivery_instruction', '') or '').strip()
 
+    # Emotion text
     emotion_text = {
         'calm': '平静、克制、自然',
         'suppressed': '压抑、低声、保留情绪',
@@ -118,25 +121,70 @@ def build_segment_delivery_instruction(segment: EmotionSegment | dict) -> str:
         'excited': '兴奋、明亮、节奏更快',
         'whisper': '接近耳语，气声更明显',
     }.get(emotion, '自然中性')
-    transition_text = '这句话紧接上一句，仍使用同一个说话人音色。'
-    if transition == 'burst':
-        transition_text = '这句话从上一句突然爆发，但仍使用同一个说话人音色。'
 
-    rate_text = '语速保持自然。'
-    if rate > 1.05:
-        rate_text = '语速加快，但吐字保持清楚。'
+    # Intensity text
+    if intensity < 0.4:
+        intensity_text = '表演克制、内敛，情绪不外露。'
+    elif intensity < 0.8:
+        intensity_text = '表演自然、适度。'
+    elif intensity < 1.2:
+        intensity_text = '表演饱满、有力度。'
+    elif intensity < 1.6:
+        intensity_text = '表演强烈、情绪外放。'
+    else:
+        intensity_text = '表演极致、接近爆发边缘。'
+
+    # Pitch text
+    if pitch < -3:
+        pitch_text = '压低声线，胸声更多。'
+    elif pitch < -1:
+        pitch_text = '声线略低，更沉稳。'
+    elif pitch < 1:
+        pitch_text = '保持自然音高。'
+    elif pitch < 3:
+        pitch_text = '声线略高，更明亮。'
+    else:
+        pitch_text = '抬高声线，更尖锐或更年轻。'
+
+    # Transition text
+    transition_text = {
+        'normal': '这句话紧接上一句，仍使用同一个说话人音色。',
+        'burst': '这句话从上一句突然爆发，但仍使用同一个说话人音色。',
+        'suppressed_burst': '这句话先压抑再突然释放，像忍了很久终于爆发。',
+        'cold_shift': '这句话情绪骤然变冷，像突然收起了所有温度。',
+        'soften': '这句话语气软化，像从强硬转向温柔或妥协。',
+        'whisper_in': '这句话越说越轻，像从正常音量渐入耳语。',
+    }.get(transition, '这句话紧接上一句，仍使用同一个说话人音色。')
+
+    # Rate text
+    if rate < 0.8:
+        rate_text = '语速明显放慢，每个字都有停顿感。'
     elif rate < 0.95:
-        rate_text = '语速放慢，停顿更明显。'
+        rate_text = '语速略慢，停顿更明显。'
+    elif rate < 1.05:
+        rate_text = '语速保持自然。'
+    elif rate < 1.2:
+        rate_text = '语速加快，但吐字保持清楚。'
+    else:
+        rate_text = '语速很快，像在急切地说。'
 
-    volume_text = '音量保持自然。'
-    if volume_db > 1:
-        volume_text = '音量提高，重音更强。'
+    # Volume text
+    if volume_db < -4:
+        volume_text = '音量很低，像在耳语或自言自语。'
     elif volume_db < -1:
         volume_text = '音量压低，表达更内收。'
+    elif volume_db < 1:
+        volume_text = '音量保持自然。'
+    elif volume_db < 4:
+        volume_text = '音量提高，重音更强。'
+    else:
+        volume_text = '音量很大，像在喊或强调。'
 
     lines = [
         transition_text,
         f'表演方式：{emotion_text}。',
+        intensity_text,
+        pitch_text,
         rate_text,
         volume_text,
         '边界：不要破音，不要像换了一个人，不要夸张到卡通化。',

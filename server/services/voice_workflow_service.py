@@ -232,12 +232,30 @@ def ordered_segments(workflow: VoiceWorkflow) -> list[VoiceWorkflowSegment]:
     return resolve_linear_path(workflow)
 
 
+def _segment_manifest_entry(segment: dict) -> dict:
+    return {
+        **segment,
+        'generation_params': {
+            'emotion': segment.get('emotion'),
+            'intensity': segment.get('intensity'),
+            'rate': segment.get('rate'),
+            'pitch': segment.get('pitch'),
+            'volume_db': segment.get('volume_db'),
+            'pause_before_ms': segment.get('pause_before_ms'),
+            'pause_after_ms': segment.get('pause_after_ms'),
+            'transition': segment.get('transition'),
+            'voice_profile_id': segment.get('voice_profile_id'),
+            'model': segment.get('model'),
+        },
+    }
+
+
 def build_workflow_manifest(workflow: VoiceWorkflow, segments: list[dict], timeline: list[dict]) -> dict:
     return {
         'title': workflow.title,
         'source': 'voice_workflow',
         'workflow_id': workflow.id,
-        'segments': segments,
+        'segments': [_segment_manifest_entry(s) for s in segments],
         'edges': [edge.to_dict() for edge in workflow.edges],
         'subtitles': timeline,
         'total_duration': round(timeline[-1]['end'], 3) if timeline else 0,
