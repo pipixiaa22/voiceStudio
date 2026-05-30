@@ -63,7 +63,7 @@
           :autoSize="{ minRows: 2, maxRows: 4 }"
         />
       </a-form-item>
-      <a-button block @click="$emit('audition', segment)">试听这一句</a-button>
+      <a-button block :loading="auditionLoading" @click="$emit('audition', segment)">试听这一句</a-button>
     </a-form>
   </div>
   <div v-else class="empty-inspector">选择一个语句节点</div>
@@ -76,6 +76,7 @@ const props = defineProps({
   segment: { type: Object, default: null },
   voiceProfiles: { type: Array, default: () => [] },
   defaultVoiceProfileId: { type: [Number, String, null], default: null },
+  auditionLoading: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update', 'audition', 'profile-created'])
 const patch = patch => emit('update', props.segment.id, patch)

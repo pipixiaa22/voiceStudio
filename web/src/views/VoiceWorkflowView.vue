@@ -47,6 +47,7 @@
           :segment="store.selectedSegment"
           :voice-profiles="voiceProfiles"
           :default-voice-profile-id="store.workflow.default_voice_profile_id"
+          :audition-loading="auditioningSegment"
           @update="(id, patch) => store.updateSegment(id, patch)"
           @audition="handleAudition"
           @profile-created="handleSegmentProfileCreated"
@@ -56,6 +57,8 @@
         <TimelineAuditionBar
           :segments="store.orderedSegments"
           :selected-segment-id="store.selectedSegmentId"
+          :audition-selected-loading="auditioningSegment"
+          :audition-path-loading="auditioningPath"
           @select="store.selectSegment($event)"
           @audition-selected="handleAuditionSelected"
           @audition-path="handleAuditionPath"
@@ -121,6 +124,7 @@ const textsStore = useTextsStore()
 const { ttsKey } = useSettings()
 const fallbackVoiceDescription = '稳定自然的中文旁白声线，吐字清晰，情绪服从每句设置。'
 const auditioningPath = ref(false)
+const auditioningSegment = ref(false)
 
 const canvasRef = ref(null)
 
@@ -293,8 +297,13 @@ const handleAudition = async segment => {
     message.warning('请先配置 TTS API Key')
     return
   }
-  const data = await store.auditionSegment(segment, ttsKey.value, fallbackVoiceDescription)
-  if (data) playBase64Audio(data.audio_base64)
+  auditioningSegment.value = true
+  try {
+    const data = await store.auditionSegment(segment, ttsKey.value, fallbackVoiceDescription)
+    if (data) playBase64Audio(data.audio_base64)
+  } finally {
+    auditioningSegment.value = false
+  }
 }
 
 const handleAuditionSelected = async () => {

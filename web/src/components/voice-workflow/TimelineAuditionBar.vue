@@ -3,8 +3,8 @@
     <div class="timeline-actions">
       <span>{{ segments.length }} 句旁白</span>
       <a-space>
-        <a-button @click="$emit('audition-selected')">试听选中</a-button>
-        <a-button @click="$emit('audition-path')">试听整条路径</a-button>
+        <a-button :loading="auditionSelectedLoading" @click="$emit('audition-selected')">试听选中</a-button>
+        <a-button :loading="auditionPathLoading" @click="$emit('audition-path')">试听整条路径</a-button>
         <a-button @click="$emit('export')">导出同步包</a-button>
       </a-space>
     </div>
@@ -13,7 +13,7 @@
         v-for="segment in segments"
         :key="segment.id"
         class="timeline-segment"
-        :class="{ active: segment.id === selectedSegmentId }"
+        :class="{ active: String(segment.id) === String(selectedSegmentId) }"
         @click="$emit('select', segment.id)"
       >
         {{ segment.order_index }} · {{ segment.emotion }}
@@ -25,7 +25,9 @@
 <script setup>
 defineProps({
   segments: { type: Array, default: () => [] },
-  selectedSegmentId: { type: Number, default: null },
+  selectedSegmentId: { type: [Number, String], default: null },
+  auditionSelectedLoading: { type: Boolean, default: false },
+  auditionPathLoading: { type: Boolean, default: false },
 })
 defineEmits(['select', 'audition-selected', 'audition-path', 'export'])
 </script>
