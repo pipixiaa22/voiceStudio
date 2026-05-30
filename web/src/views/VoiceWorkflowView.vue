@@ -16,6 +16,7 @@
           @import-text="showImportModal = true"
           @auto-layout="handleAutoLayout"
           @voice-profile-created="handleDefaultProfileCreated"
+          @clear-cache="handleClearCache"
         />
       </div>
       <div class="workflow-left">
@@ -306,6 +307,11 @@ const handleExport = async () => {
   link.click()
   URL.revokeObjectURL(url)
   message.success('导出完成')
+}
+
+const handleClearCache = async () => {
+  await store.clearCache()
+  message.success('已清除所有缓存音频')
 }
 </script>
 

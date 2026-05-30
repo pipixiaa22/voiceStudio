@@ -139,6 +139,7 @@ export const voiceWorkflowsApi = {
   auditionSegment: (id, segmentId, data) => api.post(`/voice-workflows/${id}/segments/${segmentId}/audition`, data),
   auditionPath: (id, data) => api.post(`/voice-workflows/${id}/audition-path`, data),
   exportPackage: (id, data) => api.post(`/voice-workflows/${id}/export`, data, { responseType: 'blob' }),
+  clearCache: (id) => api.delete(`/voice-workflows/${id}/cache`),
 }
 
 export default api

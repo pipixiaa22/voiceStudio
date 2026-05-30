@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { voiceWorkflowsApi } from '../api'
+import { normalizeVoiceProfileId } from '../utils/voiceWorkflowProfiles'
 
 const defaultWorkflow = () => ({
   id: null,
@@ -66,13 +67,13 @@ export const useVoiceWorkflowsStore = defineStore('voiceWorkflows', {
     async save() {
       this.saving = true
       try {
-        // Build index map with Number keys to handle both int (DB) and string (tmp) IDs
-        const segmentIndexById = new Map(this.segments.map((segment, index) => [Number(segment.id), index]))
+        // Keep keys as strings so temporary ids like "tmp-..." do not collapse to NaN.
+        const segmentIndexById = new Map(this.segments.map((segment, index) => [String(segment.id), index]))
         const payloadEdges = this.edges
           .map(edge => ({
             ...edge,
-            source_client_id: segmentIndexById.get(Number(edge.source_segment_id)),
-            target_client_id: segmentIndexById.get(Number(edge.target_segment_id)),
+            source_client_id: segmentIndexById.get(String(edge.source_segment_id)),
+            target_client_id: segmentIndexById.get(String(edge.target_segment_id)),
           }))
           .filter(edge => edge.source_client_id != null && edge.target_client_id != null)
         const { data } = await voiceWorkflowsApi.update(this.workflow.id, {
@@ -85,6 +86,17 @@ export const useVoiceWorkflowsStore = defineStore('voiceWorkflows', {
       } finally {
         this.saving = false
       }
+    },
+    updateDefaultVoiceProfile(profileId) {
+      const nextId = normalizeVoiceProfileId(profileId)
+      const previousId = this.workflow.default_voice_profile_id
+      this.workflow.default_voice_profile_id = nextId
+      if (String(previousId ?? '') === String(nextId ?? '')) return
+
+      this.segments = this.segments.map(segment => {
+        if (segment.voice_profile_id != null) return segment
+        return { ...segment, audio_status: 'missing' }
+      })
     },
     updateSegment(id, patch) {
       const AUDIO_FIELDS = new Set([
@@ -228,6 +240,15 @@ export const useVoiceWorkflowsStore = defineStore('voiceWorkflows', {
       } finally {
         this.exporting = false
       }
+    },
+    async clearCache() {
+      await voiceWorkflowsApi.clearCache(this.workflow.id)
+      this.segments = this.segments.map(s => ({
+        ...s,
+        audio_status: 'missing',
+        audio_fingerprint: null,
+        audio_path: null,
+      }))
     },
   },
 })

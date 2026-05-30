@@ -21,6 +21,9 @@
       <a-button @click="$emit('auto-layout')">自动重排</a-button>
       <a-button :loading="saving" @click="$emit('save')">保存</a-button>
       <a-button type="primary" :loading="exporting" @click="$emit('export')">导出</a-button>
+      <a-tooltip title="清除所有缓存音频，下次导出重新合成">
+        <a-button @click="$emit('clear-cache')">清除缓存</a-button>
+      </a-tooltip>
     </a-space>
   </div>
 </template>
@@ -36,7 +39,7 @@ const props = defineProps({
   defaultVoiceProfileId: { type: [Number, String, null], default: null },
   voiceProfiles: { type: Array, default: () => [] },
 })
-const emit = defineEmits(['update:title', 'update:defaultVoiceProfileId', 'save', 'export', 'import-text', 'auto-layout', 'voice-profile-created'])
+const emit = defineEmits(['update:title', 'update:defaultVoiceProfileId', 'save', 'export', 'import-text', 'auto-layout', 'voice-profile-created', 'clear-cache'])
 const localTitle = ref(props.title)
 
 watch(() => props.title, value => {
