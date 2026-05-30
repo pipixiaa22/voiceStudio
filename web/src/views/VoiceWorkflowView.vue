@@ -268,13 +268,24 @@ const handlePlanSegments = async () => {
   message.success('已生成语句节点')
 }
 
+let currentAudio = null
 const playBase64Audio = audioBase64 => {
+  // Stop any currently playing audio first
+  if (currentAudio) {
+    currentAudio.pause()
+    currentAudio.currentTime = 0
+    currentAudio = null
+  }
   const binary = atob(audioBase64)
   const bytes = new Uint8Array(binary.length)
   for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
   const url = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }))
   const audio = new Audio(url)
-  audio.onended = () => URL.revokeObjectURL(url)
+  currentAudio = audio
+  audio.onended = () => {
+    URL.revokeObjectURL(url)
+    if (currentAudio === audio) currentAudio = null
+  }
   audio.play()
 }
 
