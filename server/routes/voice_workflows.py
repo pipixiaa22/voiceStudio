@@ -105,6 +105,12 @@ def _profile_audio_voice(profile):
     return profile.get('builtin_voice')
 
 
+def _cache_path_for_fingerprint(workflow_id, fingerprint):
+    """Use fingerprint-based path so cache survives segment ID changes."""
+    safe_name = fingerprint.replace('sha256:', '')[:16]
+    return os.path.join(CACHE_DIR, str(workflow_id), f'{safe_name}.wav')
+
+
 @voice_workflows_bp.route('/api/voice-workflows/<int:workflow_id>/segments/<int:segment_id>/audition', methods=['POST'])
 def audition_voice_workflow_segment(workflow_id, segment_id):
     workflow = VoiceWorkflow.query.get_or_404(workflow_id)
@@ -125,6 +131,15 @@ def audition_voice_workflow_segment(workflow_id, segment_id):
         model=model,
         voice=_profile_audio_voice(profile),
     )
+    # Write to cache and update segment
+    cache_path = _cache_path_for_fingerprint(workflow_id, result['fingerprint'])
+    os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+    with open(cache_path, 'wb') as f:
+        f.write(result['audio_bytes'])
+    segment.audio_path = cache_path
+    segment.audio_fingerprint = result['fingerprint']
+    segment.audio_status = 'ready'
+    db.session.commit()
     return jsonify({
         'audio_base64': result['audio_base64'],
         'duration': round(result['duration'], 3),
@@ -193,7 +208,7 @@ def export_voice_workflow(workflow_id):
         segment_dict = segment.to_dict()
         expected_fingerprint = build_audio_fingerprint({**segment_dict, 'model': model})
 
-        cache_path = os.path.join(CACHE_DIR, str(workflow_id), f'{segment.id}.wav')
+        cache_path = _cache_path_for_fingerprint(workflow_id, expected_fingerprint)
         is_cached = (
             segment.audio_status == 'ready'
             and segment.audio_fingerprint == expected_fingerprint
@@ -250,3 +265,18 @@ def export_voice_workflow(workflow_id):
     )
     response.headers['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(download_name)}"
     return response
+
+
+@voice_workflows_bp.route('/api/voice-workflows/<int:workflow_id>/cache', methods=['DELETE'])
+def clear_voice_workflow_cache(workflow_id):
+    workflow = VoiceWorkflow.query.get_or_404(workflow_id)
+    import shutil
+    cache_dir = os.path.join(CACHE_DIR, str(workflow_id))
+    if os.path.exists(cache_dir):
+        shutil.rmtree(cache_dir)
+    for segment in workflow.segments:
+        segment.audio_status = 'missing'
+        segment.audio_fingerprint = None
+        segment.audio_path = None
+    db.session.commit()
+    return '', 204

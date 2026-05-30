@@ -237,20 +237,28 @@ def create_video_job():
     data = request.get_json()
     if not data:
         return jsonify({'error': '请求数据不能为空'}), 400
-    
+
     title = data.get('title', '未命名')
     template_key = data.get('template_key', 'xianxia_narration')
-    
+
     template = get_template_by_key(template_key)
     if not template:
         return jsonify({'error': f'模板 {template_key} 不存在'}), 400
-    
+
+    # If a voice_workflow_id is provided, pass it through to the job
+    voice_workflow_id = data.get('voice_workflow_id')
+    if voice_workflow_id:
+        from server.models.voice_workflow import VoiceWorkflow
+        workflow = VoiceWorkflow.query.get(int(voice_workflow_id))
+        if workflow:
+            data['voice_workflow_id'] = int(voice_workflow_id)
+
     job = create_job(title=title, request=data)
-    
+
     # Start background processing
     from flask import current_app
     start_job_processing(job.job_id, current_app._get_current_object())
-    
+
     return jsonify({
         'job_id': job.job_id,
         'status': job.status,

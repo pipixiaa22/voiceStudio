@@ -205,3 +205,59 @@ def test_export_reuses_cache_on_second_call(client, monkeypatch, tmp_path):
     })
     assert resp2.status_code == 200
     assert call_count[0] == first_count  # no new synthesize calls
+
+
+def test_audition_writes_cache(client, monkeypatch, tmp_path):
+    created = client.post('/api/voice-workflows', json={
+        'title': '缓存试听',
+        'source_content': '测试句。',
+    }).get_json()
+    segment_id = created['segments'][0]['id']
+
+    monkeypatch.setattr('server.routes.voice_workflows.repo.get_profile_by_id', lambda pid: None)
+    monkeypatch.setattr('server.routes.voice_workflows.CACHE_DIR', str(tmp_path))
+
+    class FakeProvider:
+        def __init__(self, api_key): pass
+        def synthesize(self, **kwargs):
+            return base64.b64encode(_make_wav()).decode('ascii')
+
+    monkeypatch.setattr('server.services.emotional_tts.TTSProvider', FakeProvider)
+
+    response = client.post(f"/api/voice-workflows/{created['id']}/segments/{segment_id}/audition", json={
+        'api_key': 'test-key',
+        'voice_description': 'test',
+    })
+
+    assert response.status_code == 200
+    data = response.get_json()
+
+    # Verify cache was written
+    workflow_dir = tmp_path / str(created['id'])
+    assert workflow_dir.exists()
+    wav_files = list(workflow_dir.glob('*.wav'))
+    assert len(wav_files) == 1
+
+    # Verify segment was updated
+    get_resp = client.get(f"/api/voice-workflows/{created['id']}")
+    segment = get_resp.get_json()['segments'][0]
+    assert segment['audio_status'] == 'ready'
+    assert segment['audio_fingerprint'] == data['fingerprint']
+
+
+def test_clear_workflow_cache(client, monkeypatch, tmp_path):
+    monkeypatch.setattr('server.routes.voice_workflows.CACHE_DIR', str(tmp_path))
+
+    created = client.post('/api/voice-workflows', json={
+        'title': '清理测试',
+        'source_content': '测试。',
+    }).get_json()
+
+    # Create cache dir with a file
+    cache_dir = tmp_path / str(created['id'])
+    cache_dir.mkdir(parents=True)
+    (cache_dir / 'test.wav').write_bytes(b'fake')
+
+    response = client.delete(f"/api/voice-workflows/{created['id']}/cache")
+    assert response.status_code == 204
+    assert not cache_dir.exists()
