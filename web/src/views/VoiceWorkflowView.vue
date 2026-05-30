@@ -120,6 +120,7 @@ const store = useVoiceWorkflowsStore()
 const textsStore = useTextsStore()
 const { ttsKey } = useSettings()
 const fallbackVoiceDescription = '稳定自然的中文旁白声线，吐字清晰，情绪服从每句设置。'
+const auditioningPath = ref(false)
 
 const canvasRef = ref(null)
 
@@ -295,8 +296,14 @@ const handleAuditionPath = async () => {
     message.warning('请先配置 TTS API Key')
     return
   }
-  const data = await store.auditionPath(ttsKey.value, fallbackVoiceDescription)
-  if (data) playBase64Audio(data.audio_base64)
+  if (auditioningPath.value) return
+  auditioningPath.value = true
+  try {
+    const data = await store.auditionPath(ttsKey.value, fallbackVoiceDescription)
+    if (data) playBase64Audio(data.audio_base64)
+  } finally {
+    auditioningPath.value = false
+  }
 }
 
 const handleExport = async () => {
