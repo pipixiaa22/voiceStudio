@@ -13,7 +13,7 @@
         {{ localArrowMode ? '退出箭头模式' : '箭头模式' }}
       </button>
       <span v-if="localArrowMode" class="mode-hint">
-        {{ arrowSourceId ? '② 点击目标卡片完成连线' : '① 点击起始卡片' }}
+        {{ arrowSourceId ? '② 点击目标卡片（已有连线则删除）' : '① 点击起始卡片' }}
       </span>
       <span v-if="localArrowMode && arrowSourceId" class="mode-source">
         起点: #{{ sourceOrderIndex }}
@@ -44,10 +44,13 @@ import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import '@vue-flow/controls/dist/style.css'
 import VoiceSegmentNode from './VoiceSegmentNode.vue'
+import { formatSegmentVoiceLabel } from '../../utils/voiceWorkflowProfiles'
 
 const props = defineProps({
   segments: { type: Array, default: () => [] },
   edges: { type: Array, default: () => [] },
+  voiceProfiles: { type: Array, default: () => [] },
+  defaultVoiceProfileId: { type: [Number, String, null], default: null },
 })
 const emit = defineEmits(['select', 'move', 'add-edge', 'remove-edge'])
 
@@ -76,6 +79,7 @@ const flowNodes = computed(() => props.segments.map(segment => {
     position: { x: segment.node_x || 0, y: segment.node_y || 0 },
     data: {
       ...segment,
+      voice_label: formatSegmentVoiceLabel(segment, props.defaultVoiceProfileId, props.voiceProfiles),
       isArrowSource: localArrowMode.value && arrowSourceId.value === segId,
       arrowMode: localArrowMode.value,
     },
@@ -135,6 +139,14 @@ const flowEdges = computed(() => props.edges.map(edge => {
   }
 }))
 
+// Check if an edge exists between two nodes
+const findEdgeBetween = (idA, idB) => {
+  return props.edges.find(e =>
+    (String(e.source_segment_id) === String(idA) && String(e.target_segment_id) === String(idB)) ||
+    (String(e.source_segment_id) === String(idB) && String(e.target_segment_id) === String(idA))
+  )
+}
+
 // Use Vue Flow's composable callback - this fires reliably for all node clicks
 onNodeClick(({ node }) => {
   const clickedId = node.id
@@ -146,14 +158,24 @@ onNodeClick(({ node }) => {
 
   // Arrow mode
   if (!arrowSourceId.value) {
+    // Step 1: select source
     arrowSourceId.value = clickedId
   } else if (arrowSourceId.value === clickedId) {
+    // Clicked same node: cancel
     arrowSourceId.value = null
   } else {
-    emit('add-edge', {
-      source_segment_id: arrowSourceId.value,
-      target_segment_id: clickedId,
-    })
+    // Step 2: toggle edge between source and target
+    const existing = findEdgeBetween(arrowSourceId.value, clickedId)
+    if (existing) {
+      // Edge exists: remove it
+      emit('remove-edge', existing.id)
+    } else {
+      // No edge: create one
+      emit('add-edge', {
+        source_segment_id: arrowSourceId.value,
+        target_segment_id: clickedId,
+      })
+    }
     arrowSourceId.value = null
   }
 })

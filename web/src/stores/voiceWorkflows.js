@@ -21,6 +21,7 @@ export const useVoiceWorkflowsStore = defineStore('voiceWorkflows', {
     loading: false,
     saving: false,
     exporting: false,
+    auditioningPath: false,
   }),
   getters: {
     selectedSegment(state) {
@@ -207,11 +208,17 @@ export const useVoiceWorkflowsStore = defineStore('voiceWorkflows', {
       this.selectedSegmentId = this.segments[0]?.id || null
     },
     async auditionPath(apiKey, voiceDescription) {
-      const { data } = await voiceWorkflowsApi.auditionPath(this.workflow.id, {
-        api_key: apiKey,
-        voice_description: voiceDescription,
-      })
-      return data
+      if (this.auditioningPath) return null
+      this.auditioningPath = true
+      try {
+        const { data } = await voiceWorkflowsApi.auditionPath(this.workflow.id, {
+          api_key: apiKey,
+          voice_description: voiceDescription,
+        })
+        return data
+      } finally {
+        this.auditioningPath = false
+      }
     },
     async auditionSegment(segment, apiKey, voiceDescription) {
       if (typeof segment.id === 'string') {

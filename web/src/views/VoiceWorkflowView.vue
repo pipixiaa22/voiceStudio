@@ -39,7 +39,7 @@
           @select="store.selectSegment($event)"
           @move="(id, pos) => store.updateSegment(id, pos)"
           @add-edge="handleAddEdge"
-          @remove-edge="store.removeEdge($event)"
+          @remove-edge="handleRemoveEdge"
         />
       </div>
       <div class="workflow-right">
@@ -128,6 +128,11 @@ const handleAddEdge = ({ source_segment_id, target_segment_id }) => {
   const src = store.segments.find(s => String(s.id) === String(source_segment_id))
   const tgt = store.segments.find(s => String(s.id) === String(target_segment_id))
   message.success(`已连接: #${src?.order_index || '?'} → #${tgt?.order_index || '?'}`)
+}
+
+const handleRemoveEdge = (edgeId) => {
+  store.removeEdge(edgeId)
+  message.success('已删除连线')
 }
 
 // Import modal state
@@ -291,7 +296,7 @@ const handleAuditionPath = async () => {
     return
   }
   const data = await store.auditionPath(ttsKey.value, fallbackVoiceDescription)
-  playBase64Audio(data.audio_base64)
+  if (data) playBase64Audio(data.audio_base64)
 }
 
 const handleExport = async () => {
