@@ -270,7 +270,6 @@ const handlePlanSegments = async () => {
 
 let currentAudio = null
 const playBase64Audio = audioBase64 => {
-  // Stop any currently playing audio first
   if (currentAudio) {
     currentAudio.pause()
     currentAudio.currentTime = 0
