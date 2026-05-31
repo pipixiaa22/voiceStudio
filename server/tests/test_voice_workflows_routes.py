@@ -167,6 +167,36 @@ def test_audition_path_returns_full_audio(client, monkeypatch):
     assert len(data['timeline']) == 2
 
 
+def test_audition_path_does_not_write_segment_cache_state(client, monkeypatch, tmp_path):
+    created = client.post('/api/voice-workflows', json={
+        'title': '路径试听不落库',
+        'source_content': '第一句。第二句。',
+    }).get_json()
+
+    monkeypatch.setattr('server.routes.voice_workflows.repo.get_profile_by_id', lambda pid: None)
+    monkeypatch.setattr('server.routes.voice_workflows.CACHE_DIR', str(tmp_path))
+
+    class FakeProvider:
+        def __init__(self, api_key):
+            pass
+        def synthesize(self, **kwargs):
+            return base64.b64encode(_make_wav()).decode('ascii')
+
+    monkeypatch.setattr('server.services.emotional_tts.TTSProvider', FakeProvider)
+
+    response = client.post(f"/api/voice-workflows/{created['id']}/audition-path", json={
+        'api_key': 'test-key',
+        'voice_description': '温柔女声',
+    })
+
+    assert response.status_code == 200
+    workflow = client.get(f"/api/voice-workflows/{created['id']}").get_json()
+    assert [segment['audio_status'] for segment in workflow['segments']] == ['missing', 'missing']
+    assert [segment['audio_fingerprint'] for segment in workflow['segments']] == [None, None]
+    assert [segment['audio_path'] for segment in workflow['segments']] == [None, None]
+    assert not (tmp_path / str(created['id'])).exists()
+
+
 def test_export_reuses_cache_on_second_call(client, monkeypatch, tmp_path):
     """Second export with same params should not re-synthesize."""
     call_count = [0]

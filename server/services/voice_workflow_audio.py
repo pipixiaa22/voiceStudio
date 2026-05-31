@@ -163,6 +163,7 @@ def build_voice_track_from_workflow(workflow_id: int, request_data: dict) -> dic
             segment.audio_status = 'failed'
             segment.audio_fingerprint = None
             segment.audio_path = None
+            db.session.rollback()
             raise ValueError(f"第 {segment.order_index} 句语音生成失败: {exc}") from exc
 
         audio_items.append({'wav_info': result['wav_info'], 'segment': result['segment_dict']})

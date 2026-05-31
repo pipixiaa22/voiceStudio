@@ -1,6 +1,8 @@
 import io
 import wave
 
+import pytest
+
 from server.models import db
 from server.models.voice_workflow import VoiceWorkflow, VoiceWorkflowEdge, VoiceWorkflowSegment
 
@@ -109,3 +111,43 @@ def test_build_voice_track_from_workflow_returns_manifest_and_timeline(app, tmp_
     assert result['manifest']['source'] == 'voice_workflow'
     assert result['manifest']['workflow_id'] == workflow.id
     assert [item['text'] for item in result['voice_chunks']] == ['第一句。', '第二句。']
+
+
+def test_build_voice_track_from_workflow_rolls_back_partial_state_on_failure(app, tmp_path, monkeypatch):
+    from server.services import voice_workflow_audio
+
+    monkeypatch.setattr(voice_workflow_audio, 'CACHE_DIR', str(tmp_path))
+    workflow = _workflow_with_segments()
+    first_id = workflow.segments[0].id
+    second_id = workflow.segments[1].id
+    audio = _wav_bytes()
+
+    def fake_synthesize(workflow, segment, api_key, data, reuse_cache=True, persist_cache=True):
+        if segment.order_index == 2:
+            raise RuntimeError('provider timeout')
+        segment.audio_status = 'ready'
+        segment.audio_fingerprint = 'partial-fingerprint'
+        segment.audio_path = 'partial.wav'
+        return {
+            'audio_base64': '',
+            'audio_bytes': audio,
+            'wav_info': voice_workflow_audio.read_wav_info(audio),
+            'duration': 0.1,
+            'fingerprint': 'partial-fingerprint',
+            'cached': False,
+            'segment_dict': segment.to_dict(),
+        }
+
+    monkeypatch.setattr(voice_workflow_audio, 'synthesize_or_cache_segment', fake_synthesize)
+
+    with pytest.raises(ValueError, match='第 2 句语音生成失败'):
+        voice_workflow_audio.build_voice_track_from_workflow(workflow.id, {'api_key': 'key'})
+
+    first = db.session.get(VoiceWorkflowSegment, first_id)
+    second = db.session.get(VoiceWorkflowSegment, second_id)
+    assert first.audio_status == 'missing'
+    assert first.audio_fingerprint is None
+    assert first.audio_path is None
+    assert second.audio_status == 'missing'
+    assert second.audio_fingerprint is None
+    assert second.audio_path is None

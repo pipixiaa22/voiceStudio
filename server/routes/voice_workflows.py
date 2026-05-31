@@ -332,14 +332,19 @@ def audition_voice_workflow_path(workflow_id):
     durations = []
     for segment in segments:
         try:
-            result = voice_workflow_audio.synthesize_or_cache_segment(workflow, segment, api_key, data)
+            result = voice_workflow_audio.synthesize_or_cache_segment(
+                workflow,
+                segment,
+                api_key,
+                data,
+                persist_cache=False,
+            )
         except Exception as exc:
             db.session.rollback()
             return _segment_failure_response(segment, exc)
         audio_items.append({'wav_info': result['wav_info'], 'segment': segment.to_dict()})
         durations.append(result['duration'])
 
-    db.session.commit()
     try:
         full_audio = concat_emotional_wavs(audio_items)
     except ValueError as exc:
