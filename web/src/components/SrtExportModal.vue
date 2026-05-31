@@ -23,8 +23,32 @@
         <div v-else-if="!previewing" class="preview-placeholder">调整参数后自动预览</div>
       </div>
 
+      <div class="jianying-import">
+        <a-alert
+          type="warning"
+          show-icon
+          message="导入剪映前请关闭目标工程"
+          description="这里会把当前预览的 SRT 字幕写入剪映草稿文本轨，不会生成或写入音频。系统会先备份草稿 JSON。"
+        />
+        <div style="display: flex; gap: 8px;">
+          <a-input
+            v-model:value="jianyingDraftDir"
+            placeholder="/Users/你的用户名/Movies/JianyingPro/User Data/Projects/com.lveditor.draft/工程ID"
+            style="flex: 1"
+          />
+          <a-button @click="showFolderBrowser = true">浏览</a-button>
+        </div>
+      </div>
+
       <div class="export-actions">
         <a-button @click="$emit('update:open', false)">取消</a-button>
+        <a-button
+          :disabled="!srtContent"
+          :loading="importingJianying"
+          @click="handleImportToJianying"
+        >
+          导入到剪映
+        </a-button>
         <a-button
           type="primary"
           :disabled="!srtContent"
@@ -36,6 +60,10 @@
       </div>
     </div>
   </a-modal>
+  <FolderBrowser
+    v-model:open="showFolderBrowser"
+    @select="jianyingDraftDir = $event"
+  />
 </template>
 
 <script setup>
@@ -43,6 +71,7 @@ import { ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { textsApi } from '../api'
 import SrtOptionsPanel from './SrtOptionsPanel.vue'
+import FolderBrowser from './FolderBrowser.vue'
 
 const props = defineProps({
   open: Boolean,
@@ -59,6 +88,9 @@ const srtContent = ref('')
 const segmentCount = ref(0)
 const previewing = ref(false)
 const downloading = ref(false)
+const importingJianying = ref(false)
+const jianyingDraftDir = ref(localStorage.getItem('jianying_draft_dir') || '')
+const showFolderBrowser = ref(false)
 let debounceTimer = null
 
 const fetchPreview = () => {
@@ -112,6 +144,28 @@ const handleDownload = () => {
   URL.revokeObjectURL(url)
   message.success(`已导出`)
   downloading.value = false
+}
+
+const handleImportToJianying = async () => {
+  const draftDir = jianyingDraftDir.value.trim()
+  if (!draftDir) {
+    message.warning('请填写剪映工程目录')
+    return
+  }
+  importingJianying.value = true
+  try {
+    const { data } = await textsApi.srtToJianying({
+      draft_dir: draftDir,
+      srt_content: srtContent.value,
+      track_name: `墨影字幕-${props.title || '文本库'}`,
+    })
+    localStorage.setItem('jianying_draft_dir', draftDir)
+    message.success(`已导入 ${data.subtitle_count} 条字幕到剪映`)
+  } catch (error) {
+    message.error(error.response?.data?.error || '导入剪映失败')
+  } finally {
+    importingJianying.value = false
+  }
 }
 </script>
 
@@ -172,6 +226,11 @@ const handleDownload = () => {
 .export-actions {
   display: flex;
   justify-content: flex-end;
+  gap: var(--space-sm);
+}
+
+.jianying-import {
+  display: grid;
   gap: var(--space-sm);
 }
 </style>

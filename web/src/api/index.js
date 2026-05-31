@@ -20,6 +20,7 @@ export const textsApi = {
   generateBilingualSrt: (data) => api.post('/texts/generate-bilingual-srt', data),
   exportSrt: (id, params) => api.get(`/texts/${id}/srt`, { params, responseType: 'blob' }),
   previewSrt: (id, params) => api.get(`/texts/${id}/srt`, { params, responseType: 'text' }),
+  srtToJianying: (data) => api.post('/texts/srt-to-jianying', data),
 }
 
 export const foldersApi = {
@@ -139,7 +140,12 @@ export const voiceWorkflowsApi = {
   auditionSegment: (id, segmentId, data) => api.post(`/voice-workflows/${id}/segments/${segmentId}/audition`, data),
   auditionPath: (id, data) => api.post(`/voice-workflows/${id}/audition-path`, data),
   exportPackage: (id, data) => api.post(`/voice-workflows/${id}/export`, data, { responseType: 'blob' }),
+  exportToJianying: (id, data) => api.post(`/voice-workflows/${id}/export-to-jianying`, data),
   clearCache: (id) => api.delete(`/voice-workflows/${id}/cache`),
+}
+
+export const systemApi = {
+  ls: (path) => api.get('/system/ls', { params: { path } }),
 }
 
 export default api

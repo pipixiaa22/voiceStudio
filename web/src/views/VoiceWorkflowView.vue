@@ -7,12 +7,18 @@
           :title="store.workflow.title"
           :saving="store.saving"
           :exporting="store.exporting"
+          :exporting-jianying="store.exportingJianying"
+          :switching="store.loading"
+          :current-workflow-id="store.workflow.id"
+          :workflows="store.workflows"
           :default-voice-profile-id="store.workflow.default_voice_profile_id"
           :voice-profiles="voiceProfiles"
           @update:title="store.workflow.title = $event"
           @update:default-voice-profile-id="store.updateDefaultVoiceProfile($event)"
+          @switch-workflow="handleSwitchWorkflow"
           @save="store.save()"
           @export="handleExport"
+          @export-jianying="showJianyingExportModal = true"
           @import-text="showImportModal = true"
           @auto-layout="handleAutoLayout"
           @voice-profile-created="handleDefaultProfileCreated"
@@ -59,6 +65,8 @@
           :selected-segment-id="store.selectedSegmentId"
           :audition-selected-loading="auditioningSegment"
           :audition-path-loading="auditioningPath"
+          :path-audio-url="pathAudition.audioUrl"
+          :path-duration="pathAudition.duration"
           @select="store.selectSegment($event)"
           @audition-selected="handleAuditionSelected"
           @audition-path="handleAuditionPath"
@@ -100,11 +108,44 @@
         </a-tab-pane>
       </a-tabs>
     </a-modal>
+
+    <a-modal
+      v-model:open="showJianyingExportModal"
+      title="写入剪映工程"
+      ok-text="写入"
+      cancel-text="取消"
+      :confirm-loading="store.exportingJianying"
+      @ok="handleExportToJianying"
+    >
+      <a-alert
+        type="warning"
+        show-icon
+        message="写入前请关闭剪映中的目标工程"
+        description="系统会先备份草稿 JSON，再写入一条新的“墨影字幕”文本轨。当前仅支持未加密的 Mac 本地剪映草稿。"
+        class="jianying-alert"
+      />
+      <a-form layout="vertical">
+        <a-form-item label="剪映工程目录">
+          <div style="display: flex; gap: 8px;">
+            <a-input
+              v-model:value="jianyingDraftDir"
+              placeholder="/Users/你的用户名/Movies/JianyingPro/User Data/Projects/com.lveditor.draft/工程ID"
+              style="flex: 1"
+            />
+            <a-button @click="showFolderBrowser = true">浏览</a-button>
+          </div>
+        </a-form-item>
+      </a-form>
+      <FolderBrowser
+        v-model:open="showFolderBrowser"
+        @select="jianyingDraftDir = $event"
+      />
+    </a-modal>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { voiceProfilesApi } from '../api'
@@ -116,6 +157,7 @@ import SourcePanel from '../components/voice-workflow/SourcePanel.vue'
 import VoiceFlowCanvas from '../components/voice-workflow/VoiceFlowCanvas.vue'
 import SegmentInspector from '../components/voice-workflow/SegmentInspector.vue'
 import TimelineAuditionBar from '../components/voice-workflow/TimelineAuditionBar.vue'
+import FolderBrowser from '../components/FolderBrowser.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -125,6 +167,10 @@ const { ttsKey } = useSettings()
 const fallbackVoiceDescription = '稳定自然的中文旁白声线，吐字清晰，情绪服从每句设置。'
 const auditioningPath = ref(false)
 const auditioningSegment = ref(false)
+const pathAudition = ref({
+  audioUrl: '',
+  duration: null,
+})
 
 const canvasRef = ref(null)
 
@@ -142,9 +188,12 @@ const handleRemoveEdge = (edgeId) => {
 
 // Import modal state
 const showImportModal = ref(false)
+const showJianyingExportModal = ref(false)
 const importTab = ref('paste')
 const importText = ref('')
 const importTextId = ref(null)
+const jianyingDraftDir = ref(localStorage.getItem('jianying_draft_dir') || '')
+const showFolderBrowser = ref(false)
 const voiceProfiles = ref([])
 const allTexts = computed(() => textsStore.texts)
 
@@ -171,17 +220,37 @@ const handleSegmentProfileCreated = async profile => {
   message.success(`已创建并应用音色: ${profile.name}`)
 }
 
+const loadWorkflowForRoute = async id => {
+  if (id && id !== 'new') {
+    await store.fetch(id)
+    return
+  }
+
+  const data = await store.create({ title: '未命名配音工程', source_content: '' })
+  await store.fetchList()
+  router.replace(`/voice-workflows/${data.id}`)
+}
+
 onMounted(async () => {
   if (!textsStore.texts.length) {
     textsStore.fetchTexts()
   }
   fetchVoiceProfiles()
-  if (route.params.id && route.params.id !== 'new') {
-    await store.fetch(route.params.id)
-    return
+  await store.fetchList()
+  await loadWorkflowForRoute(route.params.id)
+})
+
+watch(() => route.params.id, async (id, oldId) => {
+  if (!oldId || String(id) === String(oldId)) return
+  await loadWorkflowForRoute(id)
+})
+
+onBeforeUnmount(() => {
+  revokePathAuditionUrl()
+  if (currentAudio) {
+    currentAudio.pause()
+    currentAudio = null
   }
-  const data = await store.create({ title: '未命名配音工程', source_content: '' })
-  router.replace(`/voice-workflows/${data.id}`)
 })
 
 const filterTextOption = (input, option) => {
@@ -208,6 +277,11 @@ const handleImportConfirm = () => {
   importText.value = ''
   importTextId.value = null
   message.success('文本已导入，点击"自动切句"生成节点')
+}
+
+const handleSwitchWorkflow = workflowId => {
+  if (!workflowId || String(workflowId) === String(store.workflow.id)) return
+  router.push(`/voice-workflows/${workflowId}`)
 }
 
 const handleAutoLayout = () => {
@@ -273,16 +347,27 @@ const handlePlanSegments = async () => {
 }
 
 let currentAudio = null
+const base64ToAudioUrl = audioBase64 => {
+  const binary = atob(audioBase64)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
+  return URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }))
+}
+
+const revokePathAuditionUrl = () => {
+  if (pathAudition.value.audioUrl) {
+    URL.revokeObjectURL(pathAudition.value.audioUrl)
+  }
+  pathAudition.value = { audioUrl: '', duration: null }
+}
+
 const playBase64Audio = audioBase64 => {
   if (currentAudio) {
     currentAudio.pause()
     currentAudio.currentTime = 0
     currentAudio = null
   }
-  const binary = atob(audioBase64)
-  const bytes = new Uint8Array(binary.length)
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
-  const url = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }))
+  const url = base64ToAudioUrl(audioBase64)
   const audio = new Audio(url)
   currentAudio = audio
   audio.onended = () => {
@@ -319,7 +404,14 @@ const handleAuditionPath = async () => {
   auditioningPath.value = true
   try {
     const data = await store.auditionPath(ttsKey.value, fallbackVoiceDescription)
-    if (data) playBase64Audio(data.audio_base64)
+    if (data) {
+      revokePathAuditionUrl()
+      pathAudition.value = {
+        audioUrl: base64ToAudioUrl(data.audio_base64),
+        duration: data.total_duration,
+      }
+      message.success('整条试听已生成，可在底部播放器控制播放')
+    }
   } finally {
     auditioningPath.value = false
   }
@@ -340,6 +432,22 @@ const handleExport = async () => {
   message.success('导出完成')
 }
 
+const handleExportToJianying = async () => {
+  if (!ttsKey.value) {
+    message.warning('请先配置 TTS API Key')
+    return
+  }
+  const draftDir = jianyingDraftDir.value.trim()
+  if (!draftDir) {
+    message.warning('请填写剪映工程目录')
+    return
+  }
+  const result = await store.exportToJianying(ttsKey.value, fallbackVoiceDescription, draftDir)
+  localStorage.setItem('jianying_draft_dir', draftDir)
+  showJianyingExportModal.value = false
+  message.success(`已写入 ${result.subtitle_count} 条字幕，备份已保存`)
+}
+
 const handleClearCache = async () => {
   await store.clearCache()
   message.success('已清除所有缓存音频')
@@ -352,4 +460,5 @@ const handleClearCache = async () => {
 .workflow-top, .workflow-left, .workflow-canvas, .workflow-right, .workflow-bottom { border: 1px solid var(--surface-border); border-radius: var(--radius-md); background: var(--surface); padding: var(--space-md); }
 .workflow-top, .workflow-bottom { grid-column: 1 / 4; }
 .workflow-loading { padding: var(--space-xl); }
+.jianying-alert { margin-bottom: var(--space-md); }
 </style>
