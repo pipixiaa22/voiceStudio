@@ -7,16 +7,21 @@ from flask import Blueprint, jsonify, request, send_file
 
 from server.models import db
 from server.models.voice_workflow import VoiceWorkflow, VoiceWorkflowEdge, VoiceWorkflowSegment
-from server.services import voice_profile_repository as repo
+from server.services import voice_workflow_audio
 from server.services.audio_package import build_srt, build_zip_package, read_wav_info
 from server.services.audio_postprocess import concat_emotional_wavs, build_emotional_subtitle_timeline
-from server.services.emotional_tts import synthesize_emotion_segment
 from server.services.emotion_planner import plan_workflow_segments
-from server.services.voice_workflow_service import build_audio_fingerprint, build_workflow_manifest, ordered_segments, save_workflow_snapshot
+from server.services.jianying_draft import inject_subtitles_into_draft
+from server.services.voice_workflow_service import build_workflow_manifest, ordered_segments, save_workflow_snapshot
 
-CACHE_DIR = 'outputs/voice_workflow_cache'
+CACHE_DIR = voice_workflow_audio.CACHE_DIR
+repo = voice_workflow_audio.repo
 
 voice_workflows_bp = Blueprint('voice_workflows', __name__)
+
+
+def _sync_audio_cache_dir():
+    voice_workflow_audio.CACHE_DIR = CACHE_DIR
 
 
 def _create_edges_for_segments(workflow_id, segments):
@@ -31,6 +36,22 @@ def _create_edges_for_segments(workflow_id, segments):
         db.session.add(edge)
         edges.append(edge)
     return edges
+
+
+def _parse_int_option(value, minimum, maximum, default=None):
+    if value is None:
+        return default
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    if parsed < minimum or parsed > maximum:
+        return None
+    return parsed
+
+
+def _subtitle_max_chars(workflow, data):
+    return voice_workflow_audio.subtitle_max_chars_for_workflow(workflow, data)
 
 
 @voice_workflows_bp.route('/api/voice-workflows', methods=['GET'])
@@ -88,57 +109,204 @@ def delete_voice_workflow(workflow_id):
     return '', 204
 
 
+@voice_workflows_bp.route('/api/voice-workflows/<int:workflow_id>/duplicate', methods=['POST'])
+def duplicate_voice_workflow(workflow_id):
+    source = VoiceWorkflow.query.get_or_404(workflow_id)
+    data = request.get_json() or {}
+    duplicate = VoiceWorkflow(
+        title=data.get('title') or f'{source.title} 副本',
+        source_text_id=source.source_text_id,
+        source_content=source.source_content,
+        default_voice_profile_id=source.default_voice_profile_id,
+    )
+    duplicate.settings = source.settings
+    db.session.add(duplicate)
+    db.session.flush()
+
+    segment_id_map = {}
+    for source_segment in source.segments:
+        copied = VoiceWorkflowSegment(
+            workflow_id=duplicate.id,
+            order_index=source_segment.order_index,
+            text=source_segment.text,
+            node_x=source_segment.node_x,
+            node_y=source_segment.node_y,
+            emotion=source_segment.emotion,
+            intensity=source_segment.intensity,
+            rate=source_segment.rate,
+            pitch=source_segment.pitch,
+            volume_db=source_segment.volume_db,
+            pause_before_ms=source_segment.pause_before_ms,
+            pause_after_ms=source_segment.pause_after_ms,
+            transition=source_segment.transition,
+            delivery_instruction=source_segment.delivery_instruction,
+            voice_profile_id=source_segment.voice_profile_id,
+            audio_status='missing',
+            audio_path=None,
+            audio_fingerprint=None,
+        )
+        db.session.add(copied)
+        db.session.flush()
+        segment_id_map[source_segment.id] = copied.id
+
+    for source_edge in source.edges:
+        source_id = segment_id_map.get(source_edge.source_segment_id)
+        target_id = segment_id_map.get(source_edge.target_segment_id)
+        if source_id and target_id:
+            db.session.add(VoiceWorkflowEdge(
+                workflow_id=duplicate.id,
+                source_segment_id=source_id,
+                target_segment_id=target_id,
+                order_index=source_edge.order_index,
+            ))
+
+    db.session.commit()
+    return jsonify(duplicate.to_dict(include_children=True)), 201
+
+
 @voice_workflows_bp.route('/api/voice-workflows/<int:workflow_id>/segments/plan', methods=['POST'])
 def plan_voice_workflow_segments_endpoint(workflow_id):
     VoiceWorkflow.query.get_or_404(workflow_id)
     data = request.get_json() or {}
     content = data.get('content') or ''
-    max_chars = int(data.get('max_chars', 80))
+    max_chars = _parse_int_option(data.get('max_chars', 80), 1, 500, 80)
+    if max_chars is None:
+        return jsonify({'error': 'max_chars 必须是 1 到 500 之间的整数'}), 400
     return jsonify({'segments': plan_workflow_segments(content, max_chars=max_chars)})
 
 
-def _profile_audio_voice(profile):
-    if not profile:
-        return None
-    if profile.get('source_type') == 'voice_clone':
-        return profile.get('voice_sample_data_uri')
-    return profile.get('builtin_voice')
+def _segment_failure_response(segment, exc):
+    return jsonify({
+        'error': f"第 {segment.order_index} 句语音生成失败: {exc}",
+        'segment_id': segment.id,
+        'order_index': segment.order_index,
+        'message': str(exc),
+    }), 502
 
 
-def _cache_path_for_fingerprint(workflow_id, fingerprint):
-    """Use fingerprint-based path so cache survives segment ID changes."""
-    safe_name = fingerprint.replace('sha256:', '')[:16]
-    return os.path.join(CACHE_DIR, str(workflow_id), f'{safe_name}.wav')
+def _build_preflight(workflow):
+    _sync_audio_cache_dir()
+    try:
+        segments = ordered_segments(workflow)
+    except ValueError as exc:
+        return {
+            'ok': False,
+            'segment_count': len(workflow.segments),
+            'ready_count': 0,
+            'missing_count': len(workflow.segments),
+            'issues': [{'code': 'invalid_path', 'message': str(exc)}],
+            'warnings': [],
+            'segments': [],
+        }
+
+    issues = []
+    warnings = []
+    segment_statuses = []
+    for segment in segments:
+        status = voice_workflow_audio.cache_status_for_segment(workflow, segment)
+        segment_statuses.append(status)
+        if not segment.text.strip():
+            issues.append({
+                'code': 'empty_text',
+                'message': f'第 {segment.order_index} 句文本为空',
+                'segment_id': segment.id,
+                'order_index': segment.order_index,
+            })
+        if not status['ready']:
+            issues.append({
+                'code': 'missing_audio',
+                'message': f'第 {segment.order_index} 句音频未生成或缓存已失效',
+                'segment_id': segment.id,
+                'order_index': segment.order_index,
+            })
+
+    if not segments:
+        issues.append({'code': 'empty_workflow', 'message': '当前配音工程没有可导出的语句'})
+    if not workflow.default_voice_profile_id:
+        warnings.append({'code': 'missing_default_voice', 'message': '工程未设置默认音色，将使用兜底声音描述'})
+
+    ready_count = sum(1 for item in segment_statuses if item['ready'])
+    return {
+        'ok': not issues,
+        'segment_count': len(segments),
+        'ready_count': ready_count,
+        'missing_count': len(segments) - ready_count,
+        'issues': issues,
+        'warnings': warnings,
+        'segments': segment_statuses,
+    }
+
+
+@voice_workflows_bp.route('/api/voice-workflows/<int:workflow_id>/preflight', methods=['GET'])
+def preflight_voice_workflow(workflow_id):
+    workflow = VoiceWorkflow.query.get_or_404(workflow_id)
+    return jsonify(_build_preflight(workflow))
+
+
+@voice_workflows_bp.route('/api/voice-workflows/<int:workflow_id>/segments/regenerate-missing', methods=['POST'])
+def regenerate_missing_voice_workflow_segments(workflow_id):
+    workflow = VoiceWorkflow.query.get_or_404(workflow_id)
+    _sync_audio_cache_dir()
+    data = request.get_json() or {}
+    api_key = data.get('api_key')
+    if not api_key:
+        return jsonify({'error': '请填写 API Key'}), 400
+
+    try:
+        segments = ordered_segments(workflow)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+
+    generated = []
+    failures = []
+    for segment in segments:
+        status = voice_workflow_audio.cache_status_for_segment(workflow, segment)
+        if status['ready']:
+            continue
+        try:
+            result = voice_workflow_audio.synthesize_or_cache_segment(workflow, segment, api_key, data, reuse_cache=False)
+            generated.append({
+                'segment_id': segment.id,
+                'order_index': segment.order_index,
+                'fingerprint': result['fingerprint'],
+                'duration': round(result['duration'], 3),
+            })
+        except Exception as exc:
+            segment.audio_status = 'failed'
+            segment.audio_fingerprint = None
+            segment.audio_path = None
+            failures.append({
+                'segment_id': segment.id,
+                'order_index': segment.order_index,
+                'message': str(exc),
+            })
+
+    db.session.commit()
+    payload = {
+        'generated_count': len(generated),
+        'failed_count': len(failures),
+        'generated': generated,
+        'failures': failures,
+        'segments': [segment.to_dict() for segment in ordered_segments(workflow)],
+        'preflight': _build_preflight(workflow),
+    }
+    return jsonify(payload), 207 if failures else 200
 
 
 @voice_workflows_bp.route('/api/voice-workflows/<int:workflow_id>/segments/<int:segment_id>/audition', methods=['POST'])
 def audition_voice_workflow_segment(workflow_id, segment_id):
     workflow = VoiceWorkflow.query.get_or_404(workflow_id)
+    _sync_audio_cache_dir()
     segment = VoiceWorkflowSegment.query.filter_by(id=segment_id, workflow_id=workflow.id).first_or_404()
     data = request.get_json() or {}
     api_key = data.get('api_key')
     if not api_key:
         return jsonify({'error': '请填写 API Key'}), 400
-    profile_id = segment.voice_profile_id or workflow.default_voice_profile_id
-    profile = repo.get_profile_by_id(int(profile_id)) if profile_id else None
-    model = (profile or {}).get('model') or 'mimo-v2.5-tts-voicedesign'
-    result = synthesize_emotion_segment(
-        api_key,
-        segment.to_dict(),
-        voice_profile=profile,
-        fallback_voice_description=data.get('voice_description', ''),
-        style_tags=(profile or {}).get('style_tags'),
-        model=model,
-        voice=_profile_audio_voice(profile),
-    )
-    # Write to cache and update segment
-    cache_path = _cache_path_for_fingerprint(workflow_id, result['fingerprint'])
-    os.makedirs(os.path.dirname(cache_path), exist_ok=True)
-    with open(cache_path, 'wb') as f:
-        f.write(result['audio_bytes'])
-    segment.audio_path = cache_path
-    segment.audio_fingerprint = result['fingerprint']
-    segment.audio_status = 'ready'
+    try:
+        result = voice_workflow_audio.synthesize_or_cache_segment(workflow, segment, api_key, data, reuse_cache=False)
+    except Exception as exc:
+        db.session.rollback()
+        return _segment_failure_response(segment, exc)
     db.session.commit()
     return jsonify({
         'audio_base64': result['audio_base64'],
@@ -150,39 +318,45 @@ def audition_voice_workflow_segment(workflow_id, segment_id):
 @voice_workflows_bp.route('/api/voice-workflows/<int:workflow_id>/audition-path', methods=['POST'])
 def audition_voice_workflow_path(workflow_id):
     workflow = VoiceWorkflow.query.get_or_404(workflow_id)
+    _sync_audio_cache_dir()
     data = request.get_json() or {}
     api_key = data.get('api_key')
     if not api_key:
         return jsonify({'error': '请填写 API Key'}), 400
 
+    try:
+        segments = ordered_segments(workflow)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
     audio_items = []
     durations = []
-    for segment in ordered_segments(workflow):
-        profile_id = segment.voice_profile_id or workflow.default_voice_profile_id
-        profile = repo.get_profile_by_id(int(profile_id)) if profile_id else None
-        model = (profile or {}).get('model') or 'mimo-v2.5-tts-voicedesign'
-        result = synthesize_emotion_segment(
-            api_key,
-            segment.to_dict(),
-            voice_profile=profile,
-            fallback_voice_description=data.get('voice_description', ''),
-            style_tags=(profile or {}).get('style_tags'),
-            model=model,
-            voice=_profile_audio_voice(profile),
-        )
+    for segment in segments:
+        try:
+            result = voice_workflow_audio.synthesize_or_cache_segment(workflow, segment, api_key, data)
+        except Exception as exc:
+            db.session.rollback()
+            return _segment_failure_response(segment, exc)
         audio_items.append({'wav_info': result['wav_info'], 'segment': segment.to_dict()})
         durations.append(result['duration'])
 
-    full_audio = concat_emotional_wavs(audio_items)
+    db.session.commit()
+    try:
+        full_audio = concat_emotional_wavs(audio_items)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
     audio_base64 = base64.b64encode(full_audio).decode('ascii')
-    subtitle_max_chars = (workflow.settings or {}).get('subtitle_max_chars', 20)
+    try:
+        subtitle_max_chars = _subtitle_max_chars(workflow, data)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
     timeline = build_emotional_subtitle_timeline(
-        [segment.to_dict() for segment in ordered_segments(workflow)], durations,
+        [segment.to_dict() for segment in segments], durations,
         subtitle_max_chars=subtitle_max_chars,
     )
+    full_info = read_wav_info(full_audio)
     return jsonify({
         'audio_base64': audio_base64,
-        'total_duration': round(sum(durations), 3),
+        'total_duration': round(full_info['frames'] / full_info['framerate'], 3),
         'segment_count': len(durations),
         'timeline': timeline,
     })
@@ -191,6 +365,7 @@ def audition_voice_workflow_path(workflow_id):
 @voice_workflows_bp.route('/api/voice-workflows/<int:workflow_id>/export', methods=['POST'])
 def export_voice_workflow(workflow_id):
     workflow = VoiceWorkflow.query.get_or_404(workflow_id)
+    _sync_audio_cache_dir()
     data = request.get_json() or {}
     api_key = data.get('api_key')
     if not api_key:
@@ -200,57 +375,49 @@ def export_voice_workflow(workflow_id):
     audio_items = []
     manifest_segments = []
     durations = []
+    export_options = data.get('export_options') or {}
+    include_segment_wavs = export_options.get('include_segment_wavs', True) is not False
+    reuse_cache = export_options.get('reuse_cache', True) is not False
 
-    for index, segment in enumerate(ordered_segments(workflow), 1):
-        profile_id = segment.voice_profile_id or workflow.default_voice_profile_id
-        profile = repo.get_profile_by_id(int(profile_id)) if profile_id else None
-        model = (profile or {}).get('model') or 'mimo-v2.5-tts-voicedesign'
-        segment_dict = segment.to_dict()
-        expected_fingerprint = build_audio_fingerprint({**segment_dict, 'model': model})
+    try:
+        segments = ordered_segments(workflow)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
 
-        cache_path = _cache_path_for_fingerprint(workflow_id, expected_fingerprint)
-        is_cached = (
-            segment.audio_status == 'ready'
-            and segment.audio_fingerprint == expected_fingerprint
-            and os.path.exists(cache_path)
-        )
-
-        if is_cached:
-            audio_bytes = open(cache_path, 'rb').read()
-            info = read_wav_info(audio_bytes)
-            duration = info['frames'] / info['framerate']
-        else:
-            result = synthesize_emotion_segment(
+    for index, segment in enumerate(segments, 1):
+        try:
+            result = voice_workflow_audio.synthesize_or_cache_segment(
+                workflow,
+                segment,
                 api_key,
-                segment_dict,
-                voice_profile=profile,
-                fallback_voice_description=data.get('voice_description', ''),
-                style_tags=(profile or {}).get('style_tags'),
-                model=model,
-                voice=_profile_audio_voice(profile),
+                data,
+                reuse_cache=reuse_cache,
             )
-            audio_bytes = result['audio_bytes']
-            info = result['wav_info']
-            duration = result['duration']
-            os.makedirs(os.path.dirname(cache_path), exist_ok=True)
-            with open(cache_path, 'wb') as f:
-                f.write(audio_bytes)
-            segment.audio_path = cache_path
-            segment.audio_fingerprint = expected_fingerprint
-            segment.audio_status = 'ready'
+        except Exception as exc:
+            db.session.rollback()
+            return _segment_failure_response(segment, exc)
 
         filename = f'segments/{index:03d}.wav'
-        chunk_files.append((filename, audio_bytes))
-        audio_items.append({'wav_info': info, 'segment': segment_dict})
-        durations.append(duration)
-        manifest_segments.append({**segment_dict, 'filename': filename, 'duration': round(duration, 3)})
+        if include_segment_wavs:
+            chunk_files.append((filename, result['audio_bytes']))
+        audio_items.append({'wav_info': result['wav_info'], 'segment': result['segment_dict']})
+        durations.append(result['duration'])
+        manifest_segments.append({
+            **result['segment_dict'],
+            'filename': filename if include_segment_wavs else None,
+            'duration': round(result['duration'], 3),
+            'cached': result['cached'],
+        })
 
     db.session.commit()
 
-    full_audio = concat_emotional_wavs(audio_items)
-    subtitle_max_chars = (workflow.settings or {}).get('subtitle_max_chars', 20)
+    try:
+        full_audio = concat_emotional_wavs(audio_items)
+        subtitle_max_chars = _subtitle_max_chars(workflow, data)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
     timeline = build_emotional_subtitle_timeline(
-        [segment.to_dict() for segment in ordered_segments(workflow)], durations,
+        [segment.to_dict() for segment in segments], durations,
         subtitle_max_chars=subtitle_max_chars,
     )
     srt_content = build_srt(timeline)
@@ -265,6 +432,53 @@ def export_voice_workflow(workflow_id):
     )
     response.headers['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(download_name)}"
     return response
+
+
+@voice_workflows_bp.route('/api/voice-workflows/<int:workflow_id>/export-to-jianying', methods=['POST'])
+def export_voice_workflow_to_jianying(workflow_id):
+    workflow = VoiceWorkflow.query.get_or_404(workflow_id)
+    _sync_audio_cache_dir()
+    data = request.get_json() or {}
+    api_key = data.get('api_key')
+    draft_dir = data.get('draft_dir')
+    if not api_key:
+        return jsonify({'error': '请填写 API Key'}), 400
+    if not draft_dir:
+        return jsonify({'error': '请填写剪映工程目录'}), 400
+
+    try:
+        segments = ordered_segments(workflow)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    if not segments:
+        return jsonify({'error': '当前配音工程没有可导出的语句'}), 400
+
+    durations = []
+    for segment in segments:
+        try:
+            result = voice_workflow_audio.synthesize_or_cache_segment(workflow, segment, api_key, data)
+        except Exception as exc:
+            db.session.rollback()
+            return _segment_failure_response(segment, exc)
+        durations.append(result['duration'])
+
+    db.session.commit()
+
+    subtitle_max_chars = (workflow.settings or {}).get('subtitle_max_chars', 20)
+    timeline = build_emotional_subtitle_timeline(
+        [segment.to_dict() for segment in segments],
+        durations,
+        subtitle_max_chars=subtitle_max_chars,
+    )
+    try:
+        result = inject_subtitles_into_draft(
+            draft_dir,
+            timeline,
+            track_name=f'墨影字幕-{workflow.id}',
+        )
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    return jsonify(result)
 
 
 @voice_workflows_bp.route('/api/voice-workflows/<int:workflow_id>/cache', methods=['DELETE'])
