@@ -197,6 +197,47 @@ def test_audition_path_does_not_write_segment_cache_state(client, monkeypatch, t
     assert not (tmp_path / str(created['id'])).exists()
 
 
+def test_audition_path_synthesizes_even_when_ready_cache_exists(client, monkeypatch, tmp_path):
+    from server.services.voice_workflow_service import build_audio_fingerprint
+
+    created = client.post('/api/voice-workflows', json={
+        'title': '路径试听强制新鲜',
+        'source_content': '测试句。',
+    }).get_json()
+    segment = created['segments'][0]
+    expected = build_audio_fingerprint({**segment, 'model': 'mimo-v2.5-tts-voicedesign'})
+    cache_dir = tmp_path / str(created['id'])
+    cache_dir.mkdir(parents=True)
+    cache_path = cache_dir / f"{expected.replace('sha256:', '')[:16]}.wav"
+    cache_path.write_bytes(_make_wav(duration_seconds=0.1))
+    client.put(f"/api/voice-workflows/{created['id']}", json={
+        'workflow': created,
+        'segments': [{**segment, 'audio_status': 'ready', 'audio_fingerprint': expected}],
+        'edges': [],
+    })
+
+    call_count = [0]
+    monkeypatch.setattr('server.routes.voice_workflows.repo.get_profile_by_id', lambda pid: None)
+    monkeypatch.setattr('server.routes.voice_workflows.CACHE_DIR', str(tmp_path))
+
+    class CountingProvider:
+        def __init__(self, api_key):
+            pass
+        def synthesize(self, **kwargs):
+            call_count[0] += 1
+            return base64.b64encode(_make_wav()).decode('ascii')
+
+    monkeypatch.setattr('server.services.emotional_tts.TTSProvider', CountingProvider)
+
+    response = client.post(f"/api/voice-workflows/{created['id']}/audition-path", json={
+        'api_key': 'test-key',
+        'voice_description': '温柔女声',
+    })
+
+    assert response.status_code == 200
+    assert call_count[0] == 1
+
+
 def test_export_reuses_cache_on_second_call(client, monkeypatch, tmp_path):
     """Second export with same params should not re-synthesize."""
     call_count = [0]

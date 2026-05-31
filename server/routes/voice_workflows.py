@@ -337,6 +337,7 @@ def audition_voice_workflow_path(workflow_id):
                 segment,
                 api_key,
                 data,
+                reuse_cache=False,
                 persist_cache=False,
             )
         except Exception as exc:
