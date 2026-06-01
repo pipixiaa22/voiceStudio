@@ -190,6 +190,34 @@ def merge_video_manifest(title, template_key, resolution, scenes, audio_options,
     return manifest
 
 
+def prepare_audio_mix(voice_audio: bytes, audio_options: dict, audio_config: dict) -> dict:
+    from server.services.audio_mixer import mix_audio
+
+    warnings = []
+    bgm_wav = None
+    bgm_path = audio_options.get('bgm_path')
+    if audio_options.get('bgm_enabled'):
+        if bgm_path and os.path.exists(bgm_path):
+            with open(bgm_path, 'rb') as f:
+                bgm_wav = f.read()
+        else:
+            warnings.append('BGM 已开启但没有上传 WAV 文件')
+
+    mixed_audio = voice_audio
+    if bgm_wav or audio_options.get('ambient_enabled'):
+        mixed_audio = mix_audio(
+            voice_wav=voice_audio,
+            bgm_wav=bgm_wav,
+            ambient_wav=None,
+            voice_volume=audio_config.get('voice_volume', 1.0),
+            bgm_volume=audio_options.get('bgm_volume', audio_config.get('bgm_volume', 0.18)),
+            ambient_volume=audio_options.get('ambient_volume', audio_config.get('ambient_volume', 0.12)),
+            fade_in=audio_options.get('bgm_fade_in', audio_config.get('fade_in', 1.0)),
+            fade_out=audio_options.get('bgm_fade_out', audio_config.get('fade_out', 1.5)),
+        )
+    return {'mixed_audio': mixed_audio, 'warnings': warnings}
+
+
 def _process_job(job_id: str, app):
     """Process a video job in the background."""
     with app.app_context():
@@ -205,8 +233,7 @@ def _process_job(job_id: str, app):
             update_job_progress(job_id, 0.1, 'planning', '正在规划分镜和语音块')
 
             from server.services.audio_package import build_srt
-            from server.services.audio_mixer import mix_audio
-            from server.services.capcut_package import build_manifest, build_capcut_zip
+            from server.services.capcut_package import build_capcut_zip
 
             # Get template config
             template_key = request_data.get('template_key', 'xianxia_narration')
@@ -232,24 +259,9 @@ def _process_job(job_id: str, app):
             update_job_progress(job_id, 0.6, 'mixing_audio', '正在混合音频')
 
             audio_options = request_data.get('audio_options', {})
-            mixed_audio = full_voice_audio
-
-            if audio_options.get('bgm_enabled') or audio_options.get('ambient_enabled'):
-                bgm_wav = None
-                ambient_wav = None
-
-                # TODO: Handle BGM file upload
-                # For now, just mix with voice only
-                mixed_audio = mix_audio(
-                    voice_wav=full_voice_audio,
-                    bgm_wav=bgm_wav,
-                    ambient_wav=ambient_wav,
-                    voice_volume=audio_config.get('voice_volume', 1.0),
-                    bgm_volume=audio_options.get('bgm_volume', audio_config.get('bgm_volume', 0.18)),
-                    ambient_volume=audio_options.get('ambient_volume', audio_config.get('ambient_volume', 0.12)),
-                    fade_in=audio_options.get('bgm_fade_in', audio_config.get('fade_in', 1.0)),
-                    fade_out=audio_options.get('bgm_fade_out', audio_config.get('fade_out', 1.5)),
-                )
+            mix_result = prepare_audio_mix(full_voice_audio, audio_options, audio_config)
+            mixed_audio = mix_result['mixed_audio']
+            audio_warnings = mix_result['warnings']
 
             # Stage 4: Render video
             update_job_progress(job_id, 0.7, 'rendering_video', '正在渲染视频')
@@ -263,6 +275,10 @@ def _process_job(job_id: str, app):
                 with open(voice_path, 'wb') as f:
                     f.write(full_voice_audio)
 
+                mixed_path = os.path.join(tmpdir, 'mixed.wav')
+                with open(mixed_path, 'wb') as f:
+                    f.write(mixed_audio)
+
                 # Create video
                 output_path = os.path.join(tmpdir, f'{title}.mp4')
 
@@ -271,7 +287,7 @@ def _process_job(job_id: str, app):
 
                 # Generate video with moviepy
                 _generate_simple_video(
-                    voice_path=voice_path,
+                    audio_path=mixed_path,
                     subtitle_timeline=subtitle_timeline,
                     output_path=output_path,
                     width=resolution[0],
@@ -286,15 +302,14 @@ def _process_job(job_id: str, app):
                 srt_content = build_srt(subtitle_timeline)
 
                 # Build manifest
-                manifest = build_manifest(
+                manifest = merge_video_manifest(
                     title=title,
                     template_key=template_key,
-                    duration=subtitle_timeline[-1]['end'] if subtitle_timeline else 0,
                     resolution=resolution,
-                    scenes=[],
-                    voice_chunks=voice_track.get('voice_chunks', []),
-                    subtitles=subtitle_timeline,
-                    audio={'voice': f'{title}_完整旁白.wav', 'mixed': f'{title}_混音音频.wav'},
+                    scenes=scenes_data,
+                    audio_options=audio_options,
+                    voice_track=voice_track,
+                    warnings=audio_warnings,
                 )
 
                 # Build ZIP package
@@ -332,12 +347,12 @@ def _process_job(job_id: str, app):
             update_job_failed(job_id, str(e))
 
 
-def _generate_simple_video(voice_path: str, subtitle_timeline: list, output_path: str, width: int, height: int, fps: int, image_path: str = None):
+def _generate_simple_video(audio_path: str, subtitle_timeline: list, output_path: str, width: int, height: int, fps: int, image_path: str = None):
     """Generate a video with image background and subtitles."""
     from moviepy import AudioFileClip, ImageClip, ColorClip, TextClip, CompositeVideoClip
     import traceback
 
-    audio = AudioFileClip(voice_path)
+    audio = AudioFileClip(audio_path)
     duration = audio.duration
 
     # Rescale subtitle timeline to match actual audio duration

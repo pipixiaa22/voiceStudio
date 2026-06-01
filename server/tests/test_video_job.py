@@ -187,3 +187,26 @@ def test_merge_video_manifest_marks_workflow_source():
     assert manifest['workflow_id'] == 7
     assert manifest['video']['audio_options']['bgm_enabled'] is False
     assert manifest['video']['warnings'] == ['BGM 已开启但没有上传 WAV 文件']
+
+
+def test_prepare_audio_mix_warns_when_bgm_enabled_without_path():
+    from server.services.video_job import prepare_audio_mix
+
+    result = prepare_audio_mix(
+        voice_audio=b'voice',
+        audio_options={'bgm_enabled': True},
+        audio_config={'voice_volume': 1.0, 'bgm_volume': 0.18},
+    )
+
+    assert result['mixed_audio'] == b'voice'
+    assert result['warnings'] == ['BGM 已开启但没有上传 WAV 文件']
+
+
+def test_generate_simple_video_accepts_audio_path_keyword():
+    import inspect
+    from server.services.video_job import _generate_simple_video
+
+    signature = inspect.signature(_generate_simple_video)
+
+    assert 'audio_path' in signature.parameters
+    assert 'voice_path' not in signature.parameters
