@@ -98,6 +98,8 @@ def start_job_processing(job_id: str, app):
 def build_voice_track(request_data: dict) -> dict:
     voice_source = request_data.get('voice_source') or (request_data.get('audio_options') or {}).get('voice_source')
     workflow_id = request_data.get('voice_workflow_id') or (request_data.get('audio_options') or {}).get('voice_workflow_id')
+    if voice_source == 'workflow' and not workflow_id:
+        raise ValueError('请选择配音工程')
     if voice_source == 'workflow' and workflow_id:
         return build_voice_track_from_workflow(int(workflow_id), request_data)
     return build_voice_track_from_text(request_data)
@@ -109,7 +111,6 @@ def build_voice_track_from_text(request_data: dict) -> dict:
     from server.services.tts_provider import TTSProvider
     from server.services.audio_package import read_wav_info, concat_wavs
     from server.services.subtitle_timeline import build_subtitle_timeline
-    from server.services.voice_prompt import build_voice_prompt
 
     text_id = request_data.get('text_id')
     if text_id:
@@ -135,15 +136,7 @@ def build_voice_track_from_text(request_data: dict) -> dict:
     if not api_key:
         raise ValueError('缺少 API Key')
 
-    voice_profile = _resolve_default_voice_profile(request_data)
-    voice_description = build_voice_prompt(
-        voice_profile,
-        raw_description=request_data.get('voice_description', ''),
-        fallback_description='温柔的女性声音',
-    )
-    voice_model = (voice_profile or {}).get('model') or 'mimo-v2.5-tts-voicedesign'
-    voice_style_tags = (voice_profile or {}).get('style_tags')
-    audio_voice = _audio_voice_from_profile(voice_profile)
+    voice_description = request_data.get('voice_description', '温柔的女性声音')
     provider = TTSProvider(api_key)
 
     wav_infos = []
@@ -153,9 +146,6 @@ def build_voice_track_from_text(request_data: dict) -> dict:
             audio_b64 = provider.synthesize(
                 voice_description,
                 chunk.text,
-                style_tags=voice_style_tags,
-                model=voice_model,
-                voice=audio_voice,
             )
             audio_bytes = base64.b64decode(audio_b64)
             wav_info = read_wav_info(audio_bytes)

@@ -1,3 +1,7 @@
+import base64
+import io
+import wave
+
 import pytest
 
 
@@ -83,6 +87,16 @@ def test_build_voice_track_uses_workflow_when_requested(app, monkeypatch):
     assert captured['workflow_id'] == 42
 
 
+def test_build_voice_track_rejects_workflow_without_id(app):
+    from server.services import video_job
+
+    with pytest.raises(ValueError, match='请选择配音工程'):
+        video_job.build_voice_track({
+            'voice_source': 'workflow',
+            'api_key': 'key',
+        })
+
+
 def test_build_voice_track_falls_back_to_text_mode(app, db, monkeypatch):
     from server.models import Text
     from server.services import video_job
@@ -105,6 +119,48 @@ def test_build_voice_track_falls_back_to_text_mode(app, db, monkeypatch):
     result = video_job.build_voice_track({'text_id': text.id, 'api_key': 'key'})
 
     assert result['source'] == 'text'
+
+
+def _wav_bytes(duration_seconds=0.1, framerate=8000):
+    output = io.BytesIO()
+    frames = b'\x00\x00' * int(duration_seconds * framerate)
+    with wave.open(output, 'wb') as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(framerate)
+        wav.writeframes(frames)
+    return output.getvalue()
+
+
+def test_build_voice_track_from_text_preserves_raw_voice_description(app, monkeypatch):
+    from server.services import video_job
+
+    captured = {}
+
+    class FakeTTSProvider:
+        def __init__(self, api_key):
+            captured['api_key'] = api_key
+
+        def synthesize(self, voice_description, text, **kwargs):
+            captured['voice_description'] = voice_description
+            captured['text'] = text
+            captured['kwargs'] = kwargs
+            return base64.b64encode(_wav_bytes()).decode('ascii')
+
+    monkeypatch.setattr('server.services.tts_provider.TTSProvider', FakeTTSProvider)
+
+    result = video_job.build_voice_track_from_text({
+        'content': '你好。',
+        'api_key': 'key',
+    })
+
+    assert result['source'] == 'text'
+    assert captured == {
+        'api_key': 'key',
+        'voice_description': '温柔的女性声音',
+        'text': '你好',
+        'kwargs': {},
+    }
 
 
 def test_merge_video_manifest_marks_workflow_source():
