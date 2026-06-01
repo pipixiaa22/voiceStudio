@@ -23,8 +23,11 @@ def _clamp_int(value, minimum, maximum, default):
 
 def validate_linear_edges(segments, edges) -> list[int]:
     ids = {item['id'] for item in segments if item.get('id') is not None}
-    outgoing = {}
-    incoming = {}
+    outgoing_count = {}
+    incoming_count = {}
+    next_by_source = {}
+    if not edges:
+        return [item['id'] for item in sorted(segments, key=lambda item: item.get('order_index', 0))]
     for edge in edges:
         source = edge.get('source_segment_id')
         target = edge.get('target_segment_id')
@@ -32,13 +35,35 @@ def validate_linear_edges(segments, edges) -> list[int]:
             raise ValueError('连线引用了不存在的语句节点')
         if source == target:
             raise ValueError('语句节点不能连接到自身')
-        outgoing[source] = outgoing.get(source, 0) + 1
-        incoming[target] = incoming.get(target, 0) + 1
-        if outgoing[source] > 1:
+        outgoing_count[source] = outgoing_count.get(source, 0) + 1
+        incoming_count[target] = incoming_count.get(target, 0) + 1
+        next_by_source[source] = target
+        if outgoing_count[source] > 1:
             raise ValueError('每个语句节点最多只能连接一个后继')
-        if incoming[target] > 1:
+        if incoming_count[target] > 1:
             raise ValueError('每个语句节点最多只能连接一个前驱')
-    return [item['id'] for item in sorted(segments, key=lambda item: item.get('order_index', 0))]
+
+    heads = [item_id for item_id in ids if incoming_count.get(item_id, 0) == 0]
+    if not heads:
+        raise ValueError('语句连线不能形成环路')
+    if len(edges) != max(0, len(ids) - 1):
+        raise ValueError('语句节点必须连接成一条完整链路')
+    if len(heads) != 1:
+        raise ValueError('语句节点必须连接成一条完整链路')
+
+    path = []
+    current = heads[0]
+    visited = set()
+    while current is not None:
+        if current in visited:
+            raise ValueError('语句连线不能形成环路')
+        visited.add(current)
+        path.append(current)
+        current = next_by_source.get(current)
+
+    if visited != ids:
+        raise ValueError('语句节点必须连接成一条完整链路')
+    return path
 
 
 def build_audio_fingerprint(segment: dict) -> str:
@@ -185,47 +210,23 @@ def save_workflow_snapshot(workflow_id: int, payload: dict) -> dict:
 
 def resolve_linear_path(workflow: VoiceWorkflow) -> list[VoiceWorkflowSegment]:
     """Traverse edges to get the true playback order. Falls back to order_index if no edges."""
-    segments = list(workflow.segments)
+    segments = VoiceWorkflowSegment.query.filter_by(workflow_id=workflow.id).order_by(
+        VoiceWorkflowSegment.order_index,
+    ).all()
     if not segments:
         return []
-    edges = list(workflow.edges)
+    edges = VoiceWorkflowEdge.query.filter_by(workflow_id=workflow.id).order_by(
+        VoiceWorkflowEdge.order_index,
+    ).all()
     if not edges:
         return sorted(segments, key=lambda s: s.order_index)
 
-    # Build adjacency and find head (node with no incoming edge)
-    outgoing = {}
-    incoming = set()
-    for edge in edges:
-        outgoing[edge.source_segment_id] = edge.target_segment_id
-        incoming.add(edge.target_segment_id)
-
-    heads = [s for s in segments if s.id not in incoming]
-    if len(heads) != 1:
-        # Not a clean linear chain — fall back to order_index
-        return sorted(segments, key=lambda s: s.order_index)
-
-    # Traverse from head
     seg_by_id = {s.id: s for s in segments}
-    path = []
-    current = heads[0].id
-    visited = set()
-    while current is not None and current not in visited:
-        visited.add(current)
-        seg = seg_by_id.get(current)
-        if seg:
-            path.append(seg)
-        current = outgoing.get(current)
-
-    # If we didn't visit all segments (broken chain), append remaining by order_index
-    if len(path) < len(segments):
-        visited_ids = {s.id for s in path}
-        remaining = sorted(
-            [s for s in segments if s.id not in visited_ids],
-            key=lambda s: s.order_index,
-        )
-        path.extend(remaining)
-
-    return path
+    path_ids = validate_linear_edges(
+        [segment.to_dict() for segment in segments],
+        [edge.to_dict() for edge in edges],
+    )
+    return [seg_by_id[segment_id] for segment_id in path_ids]
 
 
 def ordered_segments(workflow: VoiceWorkflow) -> list[VoiceWorkflowSegment]:

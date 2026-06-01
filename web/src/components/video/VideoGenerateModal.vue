@@ -32,6 +32,7 @@
       <VideoTemplateStep
         v-if="currentStep === 0"
         v-model:selected-template="selectedTemplate"
+        v-model:aspect-ratio="aspectRatio"
         :preferred-template-key="prefill?.template_key"
         @next="currentStep = 1"
       />
@@ -58,6 +59,7 @@
       <VideoPreviewStep
         v-if="currentStep === 4"
         :selected-template="selectedTemplate"
+        :aspect-ratio="aspectRatio"
         :scenes="scenes"
         :speaker-profiles="speakerProfiles"
         :audio-options="audioOptions"
@@ -105,6 +107,7 @@ const handleOpenSettings = () => {
 
 const currentStep = ref(0)
 const selectedTemplate = ref(null)
+const aspectRatio = ref(props.prefill?.aspect_ratio || '9:16')
 const scenes = ref([])
 const speakerProfiles = ref({})
 const audioOptions = ref({
@@ -126,6 +129,7 @@ watch(() => props.open, (val) => {
     currentStep.value = 0
     currentJobId.value = null
     selectedTemplate.value = null
+    aspectRatio.value = props.prefill?.aspect_ratio || '9:16'
     audioOptions.value = {
       voice_source: props.prefill?.audio_options?.voice_source || 'generate',
       voice_workflow_id: props.prefill?.audio_options?.voice_workflow_id || null,
@@ -169,6 +173,7 @@ const handleGenerate = async () => {
       text_id: props.textId,
       title: props.textTitle,
       template_key: selectedTemplate.value?.template_key || 'xianxia_narration',
+      aspect_ratio: aspectRatio.value,
       scenes: uploadedScenes,
       speaker_profiles: speakerProfiles.value,
       audio_options: audioOptions.value,

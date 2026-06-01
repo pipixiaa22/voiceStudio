@@ -169,12 +169,13 @@ def build_voice_track_from_text(request_data: dict) -> dict:
     }
 
 
-def merge_video_manifest(title, template_key, resolution, scenes, audio_options, voice_track, warnings=None):
+def merge_video_manifest(title, template_key, resolution, scenes, audio_options, voice_track, warnings=None, aspect_ratio=None):
     manifest = dict(voice_track.get('manifest') or {})
     manifest.update({
         'title': title,
         'source': voice_track.get('source', manifest.get('source', 'text')),
         'template_key': template_key,
+        'aspect_ratio': aspect_ratio,
         'duration': voice_track.get('duration', 0),
         'resolution': resolution,
         'voice_chunks': voice_track.get('voice_chunks', []),
@@ -243,7 +244,8 @@ def _process_job(job_id: str, app):
             from server.services.video_template import get_template_config
             template_config = get_template_config(template_key) or {}
             fps = template_config.get('fps', 24)
-            resolution = template_config.get('resolution', [1080, 1920])
+            aspect_ratio = request_data.get('aspect_ratio') or template_config.get('aspect_ratio', '9:16')
+            resolution = request_data.get('resolution') or template_config.get('resolution', [1080, 1920])
             audio_config = template_config.get('audio', {})
 
             # Stage 2: Synthesize voice
@@ -313,6 +315,7 @@ def _process_job(job_id: str, app):
                     audio_options=audio_options,
                     voice_track=voice_track,
                     warnings=audio_warnings,
+                    aspect_ratio=aspect_ratio,
                 )
 
                 # Build ZIP package

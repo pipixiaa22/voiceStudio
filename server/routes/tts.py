@@ -10,6 +10,7 @@ import requests
 from flask import Blueprint, request, jsonify, send_file
 from server.services import voice_profile_repository as repo
 from server.services.tts_provider import TTSProvider
+from server.services.voice_prompt import build_voice_prompt
 
 tts_bp = Blueprint('tts', __name__)
 
@@ -373,11 +374,9 @@ def sync_package_v2():
 
     voice_profile = _resolve_voice_profile(voice_profile_id, voice_profile_snapshot)
     if voice_profile:
-        voice_description = (
-            voice_profile.get('canonical_prompt')
-            or voice_profile.get('raw_description')
-            or voice_description
-        )
+        voice_description = build_voice_prompt(voice_profile, fallback_description=voice_description)
+    elif voice_description:
+        voice_description = build_voice_prompt(None, raw_description=voice_description)
 
     if not voice_description:
         return jsonify({'error': '请填写音色描述'}), 400

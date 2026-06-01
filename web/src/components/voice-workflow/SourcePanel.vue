@@ -45,6 +45,9 @@ const presets = [
   { label: '压抑', value: 'suppressed' },
   { label: '爆发愤怒', value: 'angry_burst' },
   { label: '冷漠', value: 'cold' },
+  { label: '悲伤', value: 'sad' },
+  { label: '兴奋', value: 'excited' },
+  { label: '耳语', value: 'whisper' },
 ]
 
 const emitWithFeedback = (event, payload) => {

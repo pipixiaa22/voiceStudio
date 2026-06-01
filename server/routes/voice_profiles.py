@@ -1,6 +1,8 @@
 from flask import Blueprint, request, jsonify
 from server.services import voice_profile_repository as repo
 from server.services.tts_provider import TTSProvider
+from server.services.voice_prompt import build_audition_text, build_voice_prompt
+from server.services.voice_profile_normalizer import normalize_voice_profile_payload
 
 voice_profiles_bp = Blueprint('voice_profiles', __name__)
 
@@ -46,8 +48,9 @@ def create_profile():
     if not data.get('name'):
         return jsonify({'error': '请填写音色名称'}), 400
 
-    if not data.get('raw_description'):
-        return jsonify({'error': '请填写音色描述'}), 400
+    data, error = normalize_voice_profile_payload(data)
+    if error:
+        return jsonify({'error': error}), 400
 
     error = _validate_and_normalize_voice_source(data)
     if error:
@@ -104,7 +107,7 @@ def audition_profile(profile_id):
         return jsonify({'error': '请求数据不能为空'}), 400
 
     api_key = data.get('api_key')
-    audition_text = data.get('text') or profile.get('audition_text') or ''
+    audition_text = build_audition_text(profile, data.get('text') or '')
 
     if not api_key:
         return jsonify({'error': '请填写 API Key'}), 400
@@ -117,7 +120,7 @@ def audition_profile(profile_id):
     try:
         provider = TTSProvider(api_key)
         audio_b64 = provider.synthesize(
-            voice_description=profile.get('canonical_prompt') or profile.get('raw_description'),
+            voice_description=build_voice_prompt(profile),
             text=audition_text,
             style_tags=profile.get('style_tags'),
             model=profile.get('model') or 'mimo-v2.5-tts-voicedesign',

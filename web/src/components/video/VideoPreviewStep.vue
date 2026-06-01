@@ -6,6 +6,9 @@
       <a-descriptions-item label="模板">
         {{ selectedTemplate?.name || '未选择' }}
       </a-descriptions-item>
+      <a-descriptions-item label="画面比例">
+        {{ aspectRatioLabel }}
+      </a-descriptions-item>
       <a-descriptions-item label="分镜数量">
         {{ scenes.length }} 个
       </a-descriptions-item>
@@ -46,8 +49,11 @@
 </template>
 
 <script setup>
-defineProps({
+import { computed } from 'vue'
+
+const props = defineProps({
   selectedTemplate: Object,
+  aspectRatio: { type: String, default: '9:16' },
   scenes: { type: Array, default: () => [] },
   speakerProfiles: { type: Object, default: () => ({}) },
   audioOptions: { type: Object, default: () => ({}) },
@@ -63,6 +69,14 @@ const AMBIENT_NAMES = {
   bell: '钟声',
   fire: '火焰声',
 }
+
+const ASPECT_RATIO_LABELS = {
+  '9:16': '抖音短视频 9:16（1080x1920）',
+  '16:9': 'B站横屏 16:9（1920x1080）',
+  '1:1': '方形通用 1:1（1080x1080）',
+}
+
+const aspectRatioLabel = computed(() => ASPECT_RATIO_LABELS[props.aspectRatio] || props.aspectRatio)
 </script>
 
 <style scoped>

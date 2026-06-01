@@ -3,19 +3,19 @@
     class="voice-node"
     :class="[
       `emotion-${data.emotion || 'neutral'}`,
-      { selected, 'arrow-source': isArrowSource, 'arrow-mode': arrowMode }
+      { selected, 'arrow-source': isArrowSourceActive, 'arrow-mode': arrowModeActive }
     ]"
   >
     <Handle id="left" type="target" :position="Position.Left" class="handle" />
     <Handle id="top" type="target" :position="Position.Top" class="handle" />
-    <div v-if="isArrowSource" class="arrow-badge source-badge">起点</div>
-    <div v-if="arrowMode && !isArrowSource" class="arrow-badge target-badge">目标</div>
+    <div v-if="isArrowSourceActive" class="arrow-badge source-badge">起点</div>
+    <div v-if="arrowModeActive && !isArrowSourceActive" class="arrow-badge target-badge">目标</div>
     <div class="node-header">
       <strong>{{ data.order_index }}</strong>
       <span class="status-tag">{{ data.audio_status === 'ready' ? '已生成' : '需生成' }}</span>
     </div>
     <p>{{ data.text }}</p>
-    <div class="node-meta">{{ emotionLabel }} · {{ data.voice_profile_id ? `音色 ${data.voice_profile_id}` : '默认音色' }}</div>
+    <div class="node-meta">{{ emotionLabel }} · {{ data.voice_label || '默认音色' }}</div>
     <Handle id="right" type="source" :position="Position.Right" class="handle" />
     <Handle id="bottom" type="source" :position="Position.Bottom" class="handle" />
   </div>
@@ -38,6 +38,8 @@ const emotionLabel = computed(() => ({
   cold: '冷漠',
   neutral: '中性',
 }[props.data.emotion] || '中性'))
+const isArrowSourceActive = computed(() => props.isArrowSource || props.data.isArrowSource)
+const arrowModeActive = computed(() => props.arrowMode || props.data.arrowMode)
 </script>
 
 <style scoped>

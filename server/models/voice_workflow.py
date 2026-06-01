@@ -70,6 +70,9 @@ class VoiceWorkflow(db.Model):
         if include_children:
             data['segments'] = [segment.to_dict() for segment in self.segments]
             data['edges'] = [edge.to_dict() for edge in self.edges]
+        else:
+            data['segment_count'] = len(self.segments)
+            data['edge_count'] = len(self.edges)
         return data
 
 

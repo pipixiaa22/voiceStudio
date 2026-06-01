@@ -53,6 +53,10 @@
         <a-select :value="segment.transition" @change="value => patch({ transition: value })">
           <a-select-option value="normal">正常</a-select-option>
           <a-select-option value="burst">爆发</a-select-option>
+          <a-select-option value="suppressed_burst">压抑后爆发</a-select-option>
+          <a-select-option value="cold_shift">转冷</a-select-option>
+          <a-select-option value="soften">转柔和</a-select-option>
+          <a-select-option value="whisper_in">压低耳语</a-select-option>
         </a-select>
       </a-form-item>
       <a-form-item label="表演指令">

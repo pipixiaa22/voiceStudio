@@ -1,11 +1,11 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import TextList from '../views/TextList.vue'
-import TextEdit from '../views/TextEdit.vue'
-import Import from '../views/Import.vue'
-import QuickGenerate from '../views/QuickGenerate.vue'
-import Discovery from '../views/Discovery.vue'
-import VoiceWorkflowList from '../views/VoiceWorkflowList.vue'
-import VoiceWorkflowView from '../views/VoiceWorkflowView.vue'
+const TextList = () => import('../views/TextList.vue')
+const TextEdit = () => import('../views/TextEdit.vue')
+const Import = () => import('../views/Import.vue')
+const QuickGenerate = () => import('../views/QuickGenerate.vue')
+const Discovery = () => import('../views/Discovery.vue')
+const VoiceWorkflowList = () => import('../views/VoiceWorkflowList.vue')
+const VoiceWorkflowView = () => import('../views/VoiceWorkflowView.vue')
 
 const routes = [
   { path: '/', component: TextList },

@@ -5,6 +5,7 @@ import requests as http_requests
 from deep_translator import GoogleTranslator
 from flask import Blueprint, request, jsonify
 from server.models import db, Text, Tag
+from server.services.jianying_draft import inject_subtitles_into_draft, parse_srt_timeline
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -216,3 +217,25 @@ def export_srt(text_id):
         'Content-Type': 'text/srt; charset=utf-8',
         'Content-Disposition': f"attachment; filename*=UTF-8''{encoded_filename}"
     }
+
+
+@texts_bp.route('/api/texts/srt-to-jianying', methods=['POST'])
+def import_srt_to_jianying():
+    data = request.get_json() or {}
+    draft_dir = data.get('draft_dir')
+    srt_content = data.get('srt_content')
+    if not draft_dir:
+        return jsonify({'error': '请填写剪映工程目录'}), 400
+    if not srt_content:
+        return jsonify({'error': '请先生成 SRT 字幕'}), 400
+
+    try:
+        timeline = parse_srt_timeline(srt_content)
+        result = inject_subtitles_into_draft(
+            draft_dir,
+            timeline,
+            track_name=data.get('track_name') or '墨影字幕-文本库',
+        )
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    return jsonify(result)

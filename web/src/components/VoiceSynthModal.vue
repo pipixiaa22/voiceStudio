@@ -309,7 +309,7 @@ const props = defineProps({
   open: Boolean,
   initialTextId: { type: Number, default: null },
 })
-defineEmits(['update:open'])
+const emit = defineEmits(['update:open'])
 
 const router = useRouter()
 const textsStore = useTextsStore()

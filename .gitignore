@@ -11,3 +11,18 @@ wheels/
 
 # Environment variables
 .env
+
+# Local databases and runtime artifacts
+data.db
+.server_pids
+outputs/
+
+# Local-only test suites
+tests/
+server/tests/
+
+# Frontend production build copied into Flask static
+server/static/
+
+# Local agent scratch files
+.superpowers/

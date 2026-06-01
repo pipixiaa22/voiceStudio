@@ -17,14 +17,17 @@ def synthesize_emotion_segment(
     model: str = 'mimo-v2.5-tts-voicedesign',
     voice: str | None = None,
 ) -> dict:
-    base_prompt = build_voice_prompt(voice_profile, fallback_description=fallback_voice_description)
+    prompt_profile = dict(voice_profile or {})
+    if style_tags and not prompt_profile.get('style_tags'):
+        prompt_profile['style_tags'] = style_tags
+    base_prompt = build_voice_prompt(prompt_profile, fallback_description=fallback_voice_description)
     instruction = build_segment_delivery_instruction(segment)
     voice_description = '\n'.join([base_prompt, '本段表演：', instruction]).strip()
     provider = TTSProvider(api_key)
     audio_b64 = provider.synthesize(
         voice_description=voice_description,
         text=segment['text'],
-        style_tags=style_tags,
+        style_tags=None,
         model=model,
         voice=voice,
         optimize_text_preview=False,

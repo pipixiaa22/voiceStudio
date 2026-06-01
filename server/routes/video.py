@@ -246,6 +246,15 @@ def create_video_job():
     if not template:
         return jsonify({'error': f'模板 {template_key} 不存在'}), 400
 
+    template_config = template.to_dict().get('config', {})
+    aspect_ratio = data.get('aspect_ratio') or template_config.get('aspect_ratio', '9:16')
+    try:
+        width, height = get_resolution(aspect_ratio)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    data['aspect_ratio'] = aspect_ratio
+    data['resolution'] = [width, height]
+
     audio_options = data.get('audio_options') or {}
     top_level_voice_source = data.get('voice_source')
     nested_voice_source = audio_options.get('voice_source')

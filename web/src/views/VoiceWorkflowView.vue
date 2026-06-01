@@ -6,6 +6,9 @@
         <WorkflowToolbar
           :title="store.workflow.title"
           :saving="store.saving"
+          :dirty="store.dirty"
+          :save-error="store.saveError"
+          :last-saved-at="store.lastSavedAt"
           :exporting="store.exporting"
           :exporting-jianying="store.exportingJianying"
           :switching="store.loading"
@@ -13,10 +16,10 @@
           :workflows="store.workflows"
           :default-voice-profile-id="store.workflow.default_voice_profile_id"
           :voice-profiles="voiceProfiles"
-          @update:title="store.workflow.title = $event"
+          @update:title="store.updateWorkflow({ title: $event })"
           @update:default-voice-profile-id="store.updateDefaultVoiceProfile($event)"
           @switch-workflow="handleSwitchWorkflow"
-          @save="store.save()"
+          @save="handleSave"
           @export="handleExport"
           @export-jianying="showJianyingExportModal = true"
           @import-text="showImportModal = true"
@@ -28,7 +31,7 @@
       <div class="workflow-left">
         <SourcePanel
           :source-content="store.workflow.source_content"
-          @update:source-content="store.workflow.source_content = $event"
+          @update:source-content="store.updateWorkflow({ source_content: $event })"
           @plan="handlePlanSegments"
           @add-segment="handleAddSegment"
           @add-pause="handleAddPause"
@@ -65,11 +68,17 @@
           :selected-segment-id="store.selectedSegmentId"
           :audition-selected-loading="auditioningSegment"
           :audition-path-loading="auditioningPath"
+          :preflight-loading="store.preflighting"
+          :regenerate-loading="store.regeneratingMissing"
           :path-audio-url="pathAudition.audioUrl"
           :path-duration="pathAudition.duration"
+          :path-timeline="pathAudition.timeline"
+          :preflight="store.preflight"
           @select="store.selectSegment($event)"
           @audition-selected="handleAuditionSelected"
           @audition-path="handleAuditionPath"
+          @preflight="handlePreflight"
+          @regenerate-missing="handleRegenerateMissing"
           @export="handleExport"
         />
       </div>
@@ -110,6 +119,40 @@
     </a-modal>
 
     <a-modal
+      v-model:open="showExportModal"
+      title="导出同步包"
+      ok-text="导出"
+      cancel-text="取消"
+      :confirm-loading="store.exporting"
+      @ok="handleExportConfirm"
+    >
+      <a-alert
+        v-if="store.preflight"
+        :type="store.preflight.ok ? 'success' : 'warning'"
+        show-icon
+        :message="store.preflight.ok ? '导出前检查通过' : '导出前检查提示'"
+        :description="exportPreflightDescription"
+        class="export-alert"
+      />
+      <a-form layout="vertical">
+        <a-form-item label="字幕每行最大字数">
+          <a-input-number
+            v-model:value="exportOptions.subtitleMaxChars"
+            :min="1"
+            :max="200"
+            style="width: 160px"
+          />
+        </a-form-item>
+        <a-form-item label="包含分段 WAV">
+          <a-switch v-model:checked="exportOptions.includeSegmentWavs" />
+        </a-form-item>
+        <a-form-item label="复用已缓存音频">
+          <a-switch v-model:checked="exportOptions.reuseCache" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
+
+    <a-modal
       v-model:open="showJianyingExportModal"
       title="写入剪映工程"
       ok-text="写入"
@@ -146,7 +189,7 @@
 
 <script setup>
 import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { voiceProfilesApi } from '../api'
 import { useVoiceWorkflowsStore } from '../stores/voiceWorkflows'
@@ -170,12 +213,17 @@ const auditioningSegment = ref(false)
 const pathAudition = ref({
   audioUrl: '',
   duration: null,
+  timeline: [],
 })
 
 const canvasRef = ref(null)
 
 const handleAddEdge = ({ source_segment_id, target_segment_id }) => {
-  store.addEdge({ source_segment_id, target_segment_id })
+  const result = store.addEdge({ source_segment_id, target_segment_id })
+  if (!result?.ok) {
+    message.warning(result?.error || '无法创建连线')
+    return
+  }
   const src = store.segments.find(s => String(s.id) === String(source_segment_id))
   const tgt = store.segments.find(s => String(s.id) === String(target_segment_id))
   message.success(`已连接: #${src?.order_index || '?'} → #${tgt?.order_index || '?'}`)
@@ -188,6 +236,7 @@ const handleRemoveEdge = (edgeId) => {
 
 // Import modal state
 const showImportModal = ref(false)
+const showExportModal = ref(false)
 const showJianyingExportModal = ref(false)
 const importTab = ref('paste')
 const importText = ref('')
@@ -196,6 +245,20 @@ const jianyingDraftDir = ref(localStorage.getItem('jianying_draft_dir') || '')
 const showFolderBrowser = ref(false)
 const voiceProfiles = ref([])
 const allTexts = computed(() => textsStore.texts)
+const exportOptions = ref({
+  includeSegmentWavs: true,
+  reuseCache: true,
+  subtitleMaxChars: 20,
+})
+const exportPreflightDescription = computed(() => {
+  const result = store.preflight
+  if (!result) return ''
+  const parts = [`${result.ready_count}/${result.segment_count} 段已缓存`]
+  if (result.missing_count) parts.push(`${result.missing_count} 段待生成`)
+  if (result.issues?.[0]) parts.push(result.issues[0].message)
+  if (!result.issues?.length && result.warnings?.[0]) parts.push(result.warnings[0].message)
+  return parts.join('，')
+})
 
 const fetchVoiceProfiles = async () => {
   try {
@@ -246,11 +309,25 @@ watch(() => route.params.id, async (id, oldId) => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload)
   revokePathAuditionUrl()
   if (currentAudio) {
     currentAudio.pause()
     currentAudio = null
   }
+})
+
+const handleBeforeUnload = event => {
+  if (!store.dirty) return
+  event.preventDefault()
+  event.returnValue = ''
+}
+
+window.addEventListener('beforeunload', handleBeforeUnload)
+
+onBeforeRouteLeave(() => {
+  if (!store.dirty) return true
+  return window.confirm('当前配音工程有未保存更改，确定离开吗？')
 })
 
 const filterTextOption = (input, option) => {
@@ -271,8 +348,10 @@ const handleImportConfirm = () => {
     message.warning('请输入或选择文本')
     return
   }
-  store.workflow.source_content = content
-  store.workflow.source_text_id = importTab.value === 'select' ? importTextId.value : null
+  store.updateWorkflow({
+    source_content: content,
+    source_text_id: importTab.value === 'select' ? importTextId.value : null,
+  })
   showImportModal.value = false
   importText.value = ''
   importTextId.value = null
@@ -328,11 +407,14 @@ const handleApplyEmotion = (emotion) => {
     suppressed: { emotion: 'suppressed', intensity: 0.55, rate: 0.9, pitch: -1, volume_db: -2 },
     angry_burst: { emotion: 'angry_burst', intensity: 1.6, rate: 1.15, pitch: 2, volume_db: 3 },
     cold: { emotion: 'cold', intensity: 0.7, rate: 0.8, pitch: -2, volume_db: -2 },
+    sad: { emotion: 'sad', intensity: 0.65, rate: 0.82, pitch: -2, volume_db: -2 },
+    excited: { emotion: 'excited', intensity: 1.2, rate: 1.18, pitch: 2, volume_db: 2 },
+    whisper: { emotion: 'whisper', intensity: 0.35, rate: 0.78, pitch: -1, volume_db: -5 },
   }
   const preset = presets[emotion]
   if (preset) {
     store.updateSegment(store.selectedSegmentId, preset)
-    const labels = { calm: '平静', suppressed: '压抑', angry_burst: '爆发愤怒', cold: '冷漠' }
+    const labels = { calm: '平静', suppressed: '压抑', angry_burst: '爆发愤怒', cold: '冷漠', sad: '悲伤', excited: '兴奋', whisper: '耳语' }
     message.success(`已应用情绪: ${labels[emotion] || emotion}`)
   }
 }
@@ -358,7 +440,7 @@ const revokePathAuditionUrl = () => {
   if (pathAudition.value.audioUrl) {
     URL.revokeObjectURL(pathAudition.value.audioUrl)
   }
-  pathAudition.value = { audioUrl: '', duration: null }
+  pathAudition.value = { audioUrl: '', duration: null, timeline: [] }
 }
 
 const playBase64Audio = audioBase64 => {
@@ -386,6 +468,8 @@ const handleAudition = async segment => {
   try {
     const data = await store.auditionSegment(segment, ttsKey.value, fallbackVoiceDescription)
     if (data) playBase64Audio(data.audio_base64)
+  } catch (error) {
+    message.error(await getApiErrorMessage(error, '试听失败'))
   } finally {
     auditioningSegment.value = false
   }
@@ -393,6 +477,15 @@ const handleAudition = async segment => {
 
 const handleAuditionSelected = async () => {
   if (store.selectedSegment) await handleAudition(store.selectedSegment)
+}
+
+const handleSave = async () => {
+  try {
+    await store.save()
+    message.success('已保存')
+  } catch (error) {
+    message.error(await getApiErrorMessage(error, '保存失败'))
+  }
 }
 
 const handleAuditionPath = async () => {
@@ -409,27 +502,104 @@ const handleAuditionPath = async () => {
       pathAudition.value = {
         audioUrl: base64ToAudioUrl(data.audio_base64),
         duration: data.total_duration,
+        timeline: data.timeline || [],
       }
       message.success('整条试听已生成，可在底部播放器控制播放')
     }
+  } catch (error) {
+    message.error(await getApiErrorMessage(error, '整条试听失败'))
   } finally {
     auditioningPath.value = false
   }
 }
 
-const handleExport = async () => {
+const handlePreflight = async () => {
+  try {
+    const data = await store.runPreflight()
+    if (!data) return
+    if (data.ok) {
+      message.success('导出前检查通过')
+    } else {
+      message.warning(data.issues?.[0]?.message || `还有 ${data.missing_count} 段音频待生成`)
+    }
+  } catch (error) {
+    message.error(await getApiErrorMessage(error, '导出前检查失败'))
+  }
+}
+
+const handleOpenExport = async () => {
+  exportOptions.value.subtitleMaxChars = Number(store.workflow.settings?.subtitle_max_chars || 20)
+  showExportModal.value = true
+  try {
+    await store.runPreflight()
+  } catch (error) {
+    message.error(await getApiErrorMessage(error, '导出前检查失败'))
+  }
+}
+
+const handleRegenerateMissing = async () => {
   if (!ttsKey.value) {
     message.warning('请先配置 TTS API Key')
     return
   }
-  const response = await store.exportPackage(ttsKey.value, fallbackVoiceDescription)
-  const url = URL.createObjectURL(new Blob([response.data], { type: 'application/zip' }))
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `${store.workflow.title || '配音工作流'}_配音工作流.zip`
-  link.click()
-  URL.revokeObjectURL(url)
-  message.success('导出完成')
+  try {
+    const data = await store.regenerateMissing(ttsKey.value, fallbackVoiceDescription)
+    if (!data) return
+    if (data.failed_count) {
+      message.warning(`已生成 ${data.generated_count} 段，${data.failed_count} 段失败`)
+    } else {
+      message.success(`已生成 ${data.generated_count} 段缺失音频`)
+    }
+  } catch (error) {
+    message.error(await getApiErrorMessage(error, '生成缺失音频失败'))
+  }
+}
+
+const getApiErrorMessage = async (error, fallback) => {
+  const data = error?.response?.data
+  if (data?.error) return data.error
+  if (data instanceof Blob) {
+    try {
+      const text = await data.text()
+      const parsed = JSON.parse(text)
+      return parsed.error || fallback
+    } catch {
+      return fallback
+    }
+  }
+  return error?.message || fallback
+}
+
+const handleExport = () => {
+  handleOpenExport()
+}
+
+const handleExportConfirm = async () => {
+  if (!ttsKey.value) {
+    message.warning('请先配置 TTS API Key')
+    return
+  }
+  try {
+    const response = await store.exportPackage(ttsKey.value, fallbackVoiceDescription, {
+      export_options: {
+        include_segment_wavs: exportOptions.value.includeSegmentWavs,
+        reuse_cache: exportOptions.value.reuseCache,
+      },
+      subtitle_options: {
+        max_chars: exportOptions.value.subtitleMaxChars,
+      },
+    })
+    const url = URL.createObjectURL(new Blob([response.data], { type: 'application/zip' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${store.workflow.title || '配音工作流'}_配音工作流.zip`
+    link.click()
+    URL.revokeObjectURL(url)
+    showExportModal.value = false
+    message.success('导出完成')
+  } catch (error) {
+    message.error(await getApiErrorMessage(error, '导出失败'))
+  }
 }
 
 const handleExportToJianying = async () => {
@@ -442,10 +612,14 @@ const handleExportToJianying = async () => {
     message.warning('请填写剪映工程目录')
     return
   }
-  const result = await store.exportToJianying(ttsKey.value, fallbackVoiceDescription, draftDir)
-  localStorage.setItem('jianying_draft_dir', draftDir)
-  showJianyingExportModal.value = false
-  message.success(`已写入 ${result.subtitle_count} 条字幕，备份已保存`)
+  try {
+    const result = await store.exportToJianying(ttsKey.value, fallbackVoiceDescription, draftDir)
+    localStorage.setItem('jianying_draft_dir', draftDir)
+    showJianyingExportModal.value = false
+    message.success(`已写入 ${result.subtitle_count} 条字幕，备份已保存`)
+  } catch (error) {
+    message.error(await getApiErrorMessage(error, '写入剪映失败'))
+  }
 }
 
 const handleClearCache = async () => {
@@ -455,10 +629,26 @@ const handleClearCache = async () => {
 </script>
 
 <style scoped>
-.voice-workflow-view { height: calc(100vh - 64px); padding: var(--space-md); }
-.workflow-shell { display: grid; grid-template-columns: 260px 1fr 340px; grid-template-rows: 56px 1fr 126px; gap: 12px; height: 100%; }
+.voice-workflow-view { height: calc(100vh - 64px); padding: var(--space-md); overflow: auto; }
+.workflow-shell { display: grid; grid-template-columns: 260px minmax(360px, 1fr) 340px; grid-template-rows: minmax(56px, auto) minmax(420px, 1fr) minmax(126px, auto); gap: 12px; min-height: 100%; }
 .workflow-top, .workflow-left, .workflow-canvas, .workflow-right, .workflow-bottom { border: 1px solid var(--surface-border); border-radius: var(--radius-md); background: var(--surface); padding: var(--space-md); }
 .workflow-top, .workflow-bottom { grid-column: 1 / 4; }
 .workflow-loading { padding: var(--space-xl); }
 .jianying-alert { margin-bottom: var(--space-md); }
+.export-alert { margin-bottom: var(--space-md); }
+
+@media (max-width: 1180px) {
+  .voice-workflow-view { height: auto; min-height: calc(100vh - 64px); }
+  .workflow-shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(420px, 56vh) auto auto;
+  }
+  .workflow-top,
+  .workflow-left,
+  .workflow-canvas,
+  .workflow-right,
+  .workflow-bottom {
+    grid-column: 1;
+  }
+}
 </style>

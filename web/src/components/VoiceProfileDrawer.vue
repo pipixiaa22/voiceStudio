@@ -4,7 +4,7 @@
     @update:open="$emit('update:open', $event)"
     title="新建音色"
     placement="right"
-    :width="480"
+    :width="560"
     :bodyStyle="{ padding: '16px' }"
   >
     <a-form layout="vertical" class="profile-form">
@@ -96,10 +96,37 @@
         </a-form-item>
       </div>
 
+      <!-- 人物人设 -->
+      <div class="form-section">
+        <div class="section-title">人物人设</div>
+        <a-form-item label="角色或身份">
+          <a-input v-model:value="form.role_name" placeholder="例如：冷面师尊、深夜电台主播、耐心课程老师" />
+        </a-form-item>
+        <a-form-item label="角色类型">
+          <a-input v-model:value="form.archetype" placeholder="例如：反派谋士、温柔姐姐、热血解说" />
+        </a-form-item>
+        <a-form-item label="性格关键词">
+          <a-input v-model:value="form.personality" placeholder="例如：克制、可靠、略带疏离感" />
+        </a-form-item>
+        <a-form-item label="说话习惯">
+          <a-input v-model:value="form.speaking_habit" placeholder="例如：短句多，尾音收紧，不拖腔" />
+        </a-form-item>
+        <a-form-item label="听众关系">
+          <a-input v-model:value="form.relationship_to_listener" placeholder="例如：对方是刚入门的弟子、面对镜头里的朋友" />
+        </a-form-item>
+        <a-form-item label="人设补充">
+          <a-textarea
+            v-model:value="form.persona_prompt"
+            placeholder="例如：表面严厉，其实隐藏关心；不要像单纯旁白，要像角色本人在说话。"
+            :autoSize="{ minRows: 2, maxRows: 4 }"
+          />
+        </a-form-item>
+      </div>
+
       <!-- 描述 -->
       <div class="form-section">
         <div class="section-title">描述</div>
-        <a-form-item label="我想要的声音" required>
+        <a-form-item label="我想要的声音">
           <a-textarea
             v-model:value="form.raw_description"
             placeholder="例如：像一位耐心的中文课程老师，咬字清晰，语气自然，不要太像播音腔。"
@@ -163,6 +190,12 @@ const form = reactive({
   timbre: '',
   accent: '',
   style_tags: '',
+  role_name: '',
+  archetype: '',
+  personality: '',
+  speaking_habit: '',
+  relationship_to_listener: '',
+  persona_prompt: '',
   raw_description: '',
   negative_prompt: '',
   audition_text: '（古风 叙事）云海翻涌，仙门将启。你若踏上这条修行路，便再无回头之日。',
@@ -184,7 +217,15 @@ watch(() => props.open, isOpen => {
 })
 
 const canSave = computed(() => {
-  if (!form.name || !form.raw_description) return false
+  const hasVoiceExpectation = Boolean(
+    form.raw_description ||
+    form.timbre ||
+    form.role_name ||
+    form.archetype ||
+    form.personality ||
+    form.speaking_habit
+  )
+  if (!form.name || !hasVoiceExpectation) return false
   if (form.source_type !== 'voice_clone') return true
   return Boolean(form.voice_sample_data_uri && form.consent_confirmed)
 })
@@ -219,6 +260,12 @@ const handleSave = async () => {
       timbre: form.timbre,
       accent: form.accent,
       style_tags: form.style_tags,
+      role_name: form.role_name,
+      archetype: form.archetype,
+      personality: form.personality,
+      speaking_habit: form.speaking_habit,
+      relationship_to_listener: form.relationship_to_listener,
+      persona_prompt: form.persona_prompt,
       raw_description: form.raw_description,
       negative_prompt: form.negative_prompt,
       audition_text: form.audition_text,
@@ -241,6 +288,12 @@ const handleSave = async () => {
       timbre: '',
       accent: '',
       style_tags: '',
+      role_name: '',
+      archetype: '',
+      personality: '',
+      speaking_habit: '',
+      relationship_to_listener: '',
+      persona_prompt: '',
       raw_description: '',
       negative_prompt: '',
       audition_text: '（古风 叙事）云海翻涌，仙门将启。你若踏上这条修行路，便再无回头之日。',
