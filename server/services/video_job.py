@@ -197,10 +197,13 @@ def prepare_audio_mix(voice_audio: bytes, audio_options: dict, audio_config: dic
     bgm_wav = None
     bgm_path = audio_options.get('bgm_path')
     if audio_options.get('bgm_enabled'):
-        if bgm_path and os.path.exists(bgm_path):
-            with open(bgm_path, 'rb') as f:
-                bgm_wav = f.read()
-        else:
+        if bgm_path and os.path.isfile(bgm_path):
+            try:
+                with open(bgm_path, 'rb') as f:
+                    bgm_wav = f.read()
+            except OSError:
+                bgm_wav = None
+        if bgm_wav is None:
             warnings.append('BGM 已开启但没有上传 WAV 文件')
 
     mixed_audio = voice_audio

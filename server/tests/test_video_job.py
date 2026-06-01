@@ -202,6 +202,19 @@ def test_prepare_audio_mix_warns_when_bgm_enabled_without_path():
     assert result['warnings'] == ['BGM 已开启但没有上传 WAV 文件']
 
 
+def test_prepare_audio_mix_warns_when_bgm_path_is_not_readable(tmp_path):
+    from server.services.video_job import prepare_audio_mix
+
+    result = prepare_audio_mix(
+        voice_audio=b'voice',
+        audio_options={'bgm_enabled': True, 'bgm_path': str(tmp_path)},
+        audio_config={},
+    )
+
+    assert result['mixed_audio'] == b'voice'
+    assert result['warnings'] == ['BGM 已开启但没有上传 WAV 文件']
+
+
 def test_generate_simple_video_accepts_audio_path_keyword():
     import inspect
     from server.services.video_job import _generate_simple_video
