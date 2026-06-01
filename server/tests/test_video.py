@@ -1,8 +1,20 @@
 import io
 import json
+import wave
 
 import pytest
 from server.routes.video import generate_ass_subtitle, get_resolution
+
+
+def make_wav_bytes():
+    buffer = io.BytesIO()
+    with wave.open(buffer, 'wb') as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(8000)
+        wav_file.writeframes(b'\x00\x00')
+    buffer.seek(0)
+    return buffer
 
 
 def test_get_resolution_9_16():
@@ -140,6 +152,18 @@ def test_create_video_job_rejects_nonexistent_workflow_id(client):
     assert response.get_json()['error'] == '配音工程不存在'
 
 
+def test_create_video_job_rejects_invalid_workflow_id(client):
+    response = client.post('/api/video/jobs', json={
+        'title': 'Test Video',
+        'template_key': 'xianxia_narration',
+        'voice_source': 'workflow',
+        'voice_workflow_id': 'abc',
+    })
+
+    assert response.status_code == 400
+    assert response.get_json()['error'] == '配音工程 ID 无效'
+
+
 def test_create_video_job_normalizes_nested_workflow_request(client, db, monkeypatch):
     from server.models.video import VideoJob
     from server.models.voice_workflow import VoiceWorkflow
@@ -167,7 +191,11 @@ def test_create_video_job_normalizes_nested_workflow_request(client, db, monkeyp
     assert request_data['voice_workflow_id'] == workflow.id
 
 
-def test_create_video_job(client):
+def test_create_video_job(client, monkeypatch):
+    from server.routes import video as video_routes
+
+    monkeypatch.setattr(video_routes, 'start_job_processing', lambda *args, **kwargs: None)
+
     response = client.post('/api/video/jobs', json={
         'title': 'Test Video',
         'template_key': 'xianxia_narration',
@@ -180,7 +208,11 @@ def test_create_video_job(client):
     assert data['status'] == 'queued'
 
 
-def test_get_video_job_status(client):
+def test_get_video_job_status(client, monkeypatch):
+    from server.routes import video as video_routes
+
+    monkeypatch.setattr(video_routes, 'start_job_processing', lambda *args, **kwargs: None)
+
     create_resp = client.post('/api/video/jobs', json={
         'title': 'Test',
         'template_key': 'xianxia_narration',
@@ -201,7 +233,7 @@ def test_get_video_job_not_found(client):
 
 def test_upload_audio_accepts_wav(client):
     data = {
-        'audio': (io.BytesIO(b'RIFF....WAVEfmt '), 'bgm.wav'),
+        'audio': (make_wav_bytes(), 'bgm.wav'),
     }
 
     response = client.post('/api/video/upload-audio', data=data, content_type='multipart/form-data')
@@ -221,7 +253,7 @@ def test_upload_audio_rejects_missing_file(client):
 
 def test_upload_audio_rejects_empty_filename(client):
     data = {
-        'audio': (io.BytesIO(b'RIFF....WAVEfmt '), ''),
+        'audio': (make_wav_bytes(), ''),
     }
 
     response = client.post('/api/video/upload-audio', data=data, content_type='multipart/form-data')
@@ -250,3 +282,14 @@ def test_upload_audio_rejects_empty_wav(client):
 
     assert response.status_code == 400
     assert response.get_json()['error'] == '音频文件为空'
+
+
+def test_upload_audio_rejects_invalid_wav(client):
+    data = {
+        'audio': (io.BytesIO(b'not-a-real-wav'), 'bgm.wav'),
+    }
+
+    response = client.post('/api/video/upload-audio', data=data, content_type='multipart/form-data')
+
+    assert response.status_code == 400
+    assert response.get_json()['error'] == 'WAV 文件无效'

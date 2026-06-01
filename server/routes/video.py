@@ -1,6 +1,7 @@
 import os
 import re
 import tempfile
+import wave
 from flask import Blueprint, request, jsonify, send_file
 
 video_bp = Blueprint('video', __name__)
@@ -248,17 +249,26 @@ def create_video_job():
     audio_options = data.get('audio_options') or {}
     top_level_voice_source = data.get('voice_source')
     nested_voice_source = audio_options.get('voice_source')
-    voice_source = 'workflow' if 'workflow' in (top_level_voice_source, nested_voice_source) else top_level_voice_source or nested_voice_source
+    voice_source = (
+        'workflow'
+        if 'workflow' in (top_level_voice_source, nested_voice_source)
+        else top_level_voice_source or nested_voice_source
+    )
     voice_workflow_id = data.get('voice_workflow_id') or audio_options.get('voice_workflow_id')
     if voice_source == 'workflow':
         if not voice_workflow_id:
             return jsonify({'error': '请选择配音工程'}), 400
+        try:
+            voice_workflow_id = int(voice_workflow_id)
+        except (TypeError, ValueError):
+            return jsonify({'error': '配音工程 ID 无效'}), 400
+        from server.models import db
         from server.models.voice_workflow import VoiceWorkflow
-        workflow = VoiceWorkflow.query.get(int(voice_workflow_id))
+        workflow = db.session.get(VoiceWorkflow, voice_workflow_id)
         if not workflow:
             return jsonify({'error': '配音工程不存在'}), 404
         data['voice_source'] = 'workflow'
-        data['voice_workflow_id'] = int(voice_workflow_id)
+        data['voice_workflow_id'] = voice_workflow_id
 
     job = create_job(title=title, request=data)
 
@@ -329,6 +339,14 @@ def upload_video_audio():
     if audio_file.stream.tell() == 0:
         return jsonify({'error': '音频文件为空'}), 400
     audio_file.stream.seek(0)
+
+    try:
+        with wave.open(audio_file.stream, 'rb') as wav_file:
+            wav_file.getparams()
+    except (EOFError, wave.Error):
+        return jsonify({'error': 'WAV 文件无效'}), 400
+    finally:
+        audio_file.stream.seek(0)
 
     upload_dir = os.path.join(
         os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
