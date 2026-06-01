@@ -245,13 +245,18 @@ def create_video_job():
     if not template:
         return jsonify({'error': f'模板 {template_key} 不存在'}), 400
 
-    # If a voice_workflow_id is provided, pass it through to the job
-    voice_workflow_id = data.get('voice_workflow_id')
-    if voice_workflow_id:
+    audio_options = data.get('audio_options') or {}
+    voice_source = data.get('voice_source') or audio_options.get('voice_source')
+    voice_workflow_id = data.get('voice_workflow_id') or audio_options.get('voice_workflow_id')
+    if voice_source == 'workflow':
+        if not voice_workflow_id:
+            return jsonify({'error': '请选择配音工程'}), 400
         from server.models.voice_workflow import VoiceWorkflow
         workflow = VoiceWorkflow.query.get(int(voice_workflow_id))
-        if workflow:
-            data['voice_workflow_id'] = int(voice_workflow_id)
+        if not workflow:
+            return jsonify({'error': '配音工程不存在'}), 404
+        data['voice_source'] = 'workflow'
+        data['voice_workflow_id'] = int(voice_workflow_id)
 
     job = create_job(title=title, request=data)
 
@@ -303,6 +308,35 @@ def upload_video_image():
         'filename': filename,
         'path': filepath,
     })
+
+
+@video_bp.route('/api/video/upload-audio', methods=['POST'])
+def upload_video_audio():
+    if 'audio' not in request.files:
+        return jsonify({'error': '没有上传音频'}), 400
+
+    audio_file = request.files['audio']
+    if not audio_file.filename:
+        return jsonify({'error': '没有选择文件'}), 400
+
+    ext = os.path.splitext(audio_file.filename)[1].lower()
+    if ext != '.wav':
+        return jsonify({'error': '第一阶段只支持 WAV 格式 BGM'}), 400
+
+    upload_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        'outputs',
+        'uploads',
+        'audio',
+    )
+    os.makedirs(upload_dir, exist_ok=True)
+
+    import uuid
+    filename = f'{uuid.uuid4().hex}{ext}'
+    filepath = os.path.join(upload_dir, filename)
+    audio_file.save(filepath)
+
+    return jsonify({'filename': filename, 'path': filepath})
 
 
 @video_bp.route('/api/video/jobs/<job_id>/download', methods=['GET'])

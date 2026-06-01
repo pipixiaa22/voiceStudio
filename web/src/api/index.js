@@ -96,6 +96,10 @@ export const videoApi = {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
 
+  uploadAudio: (formData) => api.post('/video/upload-audio', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+
   listJobs: () => api.get('/video/jobs'),
 }
 
