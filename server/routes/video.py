@@ -246,7 +246,9 @@ def create_video_job():
         return jsonify({'error': f'模板 {template_key} 不存在'}), 400
 
     audio_options = data.get('audio_options') or {}
-    voice_source = data.get('voice_source') or audio_options.get('voice_source')
+    top_level_voice_source = data.get('voice_source')
+    nested_voice_source = audio_options.get('voice_source')
+    voice_source = 'workflow' if 'workflow' in (top_level_voice_source, nested_voice_source) else top_level_voice_source or nested_voice_source
     voice_workflow_id = data.get('voice_workflow_id') or audio_options.get('voice_workflow_id')
     if voice_source == 'workflow':
         if not voice_workflow_id:
@@ -322,6 +324,11 @@ def upload_video_audio():
     ext = os.path.splitext(audio_file.filename)[1].lower()
     if ext != '.wav':
         return jsonify({'error': '第一阶段只支持 WAV 格式 BGM'}), 400
+
+    audio_file.stream.seek(0, os.SEEK_END)
+    if audio_file.stream.tell() == 0:
+        return jsonify({'error': '音频文件为空'}), 400
+    audio_file.stream.seek(0)
 
     upload_dir = os.path.join(
         os.path.dirname(os.path.dirname(os.path.dirname(__file__))),

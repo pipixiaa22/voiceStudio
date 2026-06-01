@@ -113,6 +113,20 @@ def test_create_video_job_rejects_missing_workflow_id(client):
     assert response.get_json()['error'] == '请选择配音工程'
 
 
+def test_create_video_job_rejects_nested_missing_workflow_id(client):
+    response = client.post('/api/video/jobs', json={
+        'title': 'Test Video',
+        'template_key': 'xianxia_narration',
+        'voice_source': 'generate',
+        'audio_options': {
+            'voice_source': 'workflow',
+        },
+    })
+
+    assert response.status_code == 400
+    assert response.get_json()['error'] == '请选择配音工程'
+
+
 def test_create_video_job(client):
     response = client.post('/api/video/jobs', json={
         'title': 'Test Video',
@@ -167,3 +181,14 @@ def test_upload_audio_rejects_non_wav(client):
 
     assert response.status_code == 400
     assert response.get_json()['error'] == '第一阶段只支持 WAV 格式 BGM'
+
+
+def test_upload_audio_rejects_empty_wav(client):
+    data = {
+        'audio': (io.BytesIO(b''), 'bgm.wav'),
+    }
+
+    response = client.post('/api/video/upload-audio', data=data, content_type='multipart/form-data')
+
+    assert response.status_code == 400
+    assert response.get_json()['error'] == '音频文件为空'
