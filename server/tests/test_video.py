@@ -1,4 +1,5 @@
 import io
+import json
 
 import pytest
 from server.routes.video import generate_ass_subtitle, get_resolution
@@ -127,6 +128,45 @@ def test_create_video_job_rejects_nested_missing_workflow_id(client):
     assert response.get_json()['error'] == '请选择配音工程'
 
 
+def test_create_video_job_rejects_nonexistent_workflow_id(client):
+    response = client.post('/api/video/jobs', json={
+        'title': 'Test Video',
+        'template_key': 'xianxia_narration',
+        'voice_source': 'workflow',
+        'voice_workflow_id': 999,
+    })
+
+    assert response.status_code == 404
+    assert response.get_json()['error'] == '配音工程不存在'
+
+
+def test_create_video_job_normalizes_nested_workflow_request(client, db, monkeypatch):
+    from server.models.video import VideoJob
+    from server.models.voice_workflow import VoiceWorkflow
+    from server.routes import video as video_routes
+
+    workflow = VoiceWorkflow(title='Test Workflow', source_content='测试内容')
+    db.session.add(workflow)
+    db.session.commit()
+    monkeypatch.setattr(video_routes, 'start_job_processing', lambda *args, **kwargs: None)
+
+    response = client.post('/api/video/jobs', json={
+        'title': 'Test Video',
+        'template_key': 'xianxia_narration',
+        'voice_source': 'generate',
+        'audio_options': {
+            'voice_source': 'workflow',
+            'voice_workflow_id': workflow.id,
+        },
+    })
+
+    assert response.status_code == 202
+    job = VideoJob.query.filter_by(job_id=response.get_json()['job_id']).first()
+    request_data = json.loads(job.request_json)
+    assert request_data['voice_source'] == 'workflow'
+    assert request_data['voice_workflow_id'] == workflow.id
+
+
 def test_create_video_job(client):
     response = client.post('/api/video/jobs', json={
         'title': 'Test Video',
@@ -170,6 +210,24 @@ def test_upload_audio_accepts_wav(client):
     payload = response.get_json()
     assert payload['filename'].endswith('.wav')
     assert payload['path'].endswith('.wav')
+
+
+def test_upload_audio_rejects_missing_file(client):
+    response = client.post('/api/video/upload-audio', data={}, content_type='multipart/form-data')
+
+    assert response.status_code == 400
+    assert response.get_json()['error'] == '没有上传音频'
+
+
+def test_upload_audio_rejects_empty_filename(client):
+    data = {
+        'audio': (io.BytesIO(b'RIFF....WAVEfmt '), ''),
+    }
+
+    response = client.post('/api/video/upload-audio', data=data, content_type='multipart/form-data')
+
+    assert response.status_code == 400
+    assert response.get_json()['error'] == '没有选择文件'
 
 
 def test_upload_audio_rejects_non_wav(client):
