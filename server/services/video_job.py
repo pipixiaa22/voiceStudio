@@ -6,6 +6,7 @@ import os
 import tempfile
 import base64
 from server.models import db, VideoJob
+from server.services.voice_workflow_audio import build_voice_track_from_workflow
 
 
 def create_job(title: str, request: dict) -> VideoJob:
@@ -62,10 +63,141 @@ def list_jobs(limit: int = 20) -> list[VideoJob]:
     return VideoJob.query.order_by(VideoJob.created_at.desc()).limit(limit).all()
 
 
+def _resolve_default_voice_profile(request_data: dict) -> dict | None:
+    speaker_profiles = request_data.get('speaker_profiles') or {}
+    profile_id = (
+        speaker_profiles.get('旁白')
+        or speaker_profiles.get('default')
+        or request_data.get('voice_profile_id')
+    )
+    if not profile_id:
+        snapshot = request_data.get('voice_profile_snapshot')
+        return snapshot if isinstance(snapshot, dict) and snapshot else None
+
+    try:
+        from server.services import voice_profile_repository as repo
+        return repo.get_profile_by_id(int(profile_id))
+    except (TypeError, ValueError):
+        return None
+
+
+def _audio_voice_from_profile(profile: dict | None):
+    if not profile:
+        return None
+    if profile.get('source_type') == 'voice_clone':
+        return profile.get('voice_sample_data_uri')
+    return profile.get('builtin_voice')
+
+
 def start_job_processing(job_id: str, app):
     """Start background processing of a video job."""
     thread = threading.Thread(target=_process_job, args=(job_id, app), daemon=True)
     thread.start()
+
+
+def build_voice_track(request_data: dict) -> dict:
+    voice_source = request_data.get('voice_source') or (request_data.get('audio_options') or {}).get('voice_source')
+    workflow_id = request_data.get('voice_workflow_id') or (request_data.get('audio_options') or {}).get('voice_workflow_id')
+    if voice_source == 'workflow' and workflow_id:
+        return build_voice_track_from_workflow(int(workflow_id), request_data)
+    return build_voice_track_from_text(request_data)
+
+
+def build_voice_track_from_text(request_data: dict) -> dict:
+    from splitter import split_text
+    from server.services.tts_planner import plan_speech_chunks
+    from server.services.tts_provider import TTSProvider
+    from server.services.audio_package import read_wav_info, concat_wavs
+    from server.services.subtitle_timeline import build_subtitle_timeline
+    from server.services.voice_prompt import build_voice_prompt
+
+    text_id = request_data.get('text_id')
+    if text_id:
+        from server.models import Text
+        text = Text.query.get(text_id)
+        if not text:
+            raise ValueError('文本不存在')
+        content = text.content
+    else:
+        content = request_data.get('content', '')
+        if not content:
+            raise ValueError('没有提供文本内容')
+
+    max_chars = request_data.get('subtitle_options', {}).get('max_chars', 20)
+    subtitle_segments = split_text(content, max_chars=max_chars)
+    if not subtitle_segments:
+        raise ValueError('没有有效的字幕段')
+
+    chunk_max_chars = request_data.get('synthesis_options', {}).get('chunk_max_chars', 200)
+    chunks = plan_speech_chunks(subtitle_segments, max_chars=chunk_max_chars)
+
+    api_key = request_data.get('api_key')
+    if not api_key:
+        raise ValueError('缺少 API Key')
+
+    voice_profile = _resolve_default_voice_profile(request_data)
+    voice_description = build_voice_prompt(
+        voice_profile,
+        raw_description=request_data.get('voice_description', ''),
+        fallback_description='温柔的女性声音',
+    )
+    voice_model = (voice_profile or {}).get('model') or 'mimo-v2.5-tts-voicedesign'
+    voice_style_tags = (voice_profile or {}).get('style_tags')
+    audio_voice = _audio_voice_from_profile(voice_profile)
+    provider = TTSProvider(api_key)
+
+    wav_infos = []
+    chunk_files = []
+    for chunk in chunks:
+        try:
+            audio_b64 = provider.synthesize(
+                voice_description,
+                chunk.text,
+                style_tags=voice_style_tags,
+                model=voice_model,
+                voice=audio_voice,
+            )
+            audio_bytes = base64.b64decode(audio_b64)
+            wav_info = read_wav_info(audio_bytes)
+            wav_infos.append(wav_info)
+            chunk_files.append((f'chunks/{chunk.index:03d}.wav', audio_bytes))
+        except Exception as exc:
+            raise ValueError(f'语音块 {chunk.index} 合成失败: {str(exc)}') from exc
+
+    gap = request_data.get('subtitle_options', {}).get('gap', 0.3)
+    full_voice_audio = concat_wavs(wav_infos, gap=gap)
+    chunk_durations = [info['frames'] / info['framerate'] for info in wav_infos]
+    subtitle_timeline = build_subtitle_timeline(chunks, chunk_durations, gap=gap, subtitle_segments=subtitle_segments)
+
+    return {
+        'source': 'text',
+        'voice_audio': full_voice_audio,
+        'subtitle_timeline': subtitle_timeline,
+        'voice_chunks': [{'index': chunk.index, 'text': chunk.text} for chunk in chunks],
+        'chunk_files': chunk_files,
+        'duration': subtitle_timeline[-1]['end'] if subtitle_timeline else 0,
+    }
+
+
+def merge_video_manifest(title, template_key, resolution, scenes, audio_options, voice_track, warnings=None):
+    manifest = dict(voice_track.get('manifest') or {})
+    manifest.update({
+        'title': title,
+        'source': voice_track.get('source', manifest.get('source', 'text')),
+        'template_key': template_key,
+        'duration': voice_track.get('duration', 0),
+        'resolution': resolution,
+        'voice_chunks': voice_track.get('voice_chunks', []),
+        'subtitles': voice_track.get('subtitle_timeline', []),
+        'video': {
+            'scenes': scenes,
+            'audio_options': audio_options,
+            'warnings': warnings or [],
+        },
+    })
+    if voice_track.get('workflow_id'):
+        manifest['workflow_id'] = voice_track['workflow_id']
+    return manifest
 
 
 def _process_job(job_id: str, app):
@@ -82,41 +214,9 @@ def _process_job(job_id: str, app):
             # Stage 1: Planning
             update_job_progress(job_id, 0.1, 'planning', '正在规划分镜和语音块')
 
-            from splitter import split_text
-            from server.services.tts_planner import plan_speech_chunks
-            from server.services.tts_provider import TTSProvider
-            from server.services.audio_package import read_wav_info, concat_wavs, build_srt
-            from server.services.subtitle_timeline import build_subtitle_timeline
+            from server.services.audio_package import build_srt
             from server.services.audio_mixer import mix_audio
-            from server.services.video_renderer import get_motion_function
-            from server.services.video_scene_planner import plan_scenes
             from server.services.capcut_package import build_manifest, build_capcut_zip
-
-            # Get text content
-            text_id = request_data.get('text_id')
-            if text_id:
-                from server.models import Text
-                text = Text.query.get(text_id)
-                if not text:
-                    update_job_failed(job_id, '文本不存在')
-                    return
-                content = text.content
-            else:
-                content = request_data.get('content', '')
-                if not content:
-                    update_job_failed(job_id, '没有提供文本内容')
-                    return
-
-            # Split text into subtitle segments
-            max_chars = request_data.get('subtitle_options', {}).get('max_chars', 20)
-            subtitle_segments = split_text(content, max_chars=max_chars)
-            if not subtitle_segments:
-                update_job_failed(job_id, '没有有效的字幕段')
-                return
-
-            # Plan speech chunks
-            chunk_max_chars = request_data.get('synthesis_options', {}).get('chunk_max_chars', 200)
-            chunks = plan_speech_chunks(subtitle_segments, max_chars=chunk_max_chars)
 
             # Get template config
             template_key = request_data.get('template_key', 'xianxia_narration')
@@ -129,37 +229,14 @@ def _process_job(job_id: str, app):
             # Stage 2: Synthesize voice
             update_job_progress(job_id, 0.2, 'synthesizing_voice', '正在合成语音')
 
-            api_key = request_data.get('api_key')
-            if not api_key:
-                update_job_failed(job_id, '缺少 API Key')
+            try:
+                voice_track = build_voice_track(request_data)
+            except ValueError as exc:
+                update_job_failed(job_id, str(exc))
                 return
 
-            voice_description = request_data.get('voice_description', '温柔的女性声音')
-            provider = TTSProvider(api_key)
-
-            wav_infos = []
-            chunk_files = []
-            for i, chunk in enumerate(chunks):
-                try:
-                    audio_b64 = provider.synthesize(voice_description, chunk.text)
-                    audio_bytes = base64.b64decode(audio_b64)
-                    wav_info = read_wav_info(audio_bytes)
-                    wav_infos.append(wav_info)
-                    chunk_files.append((f'chunks/{chunk.index:03d}.wav', audio_bytes))
-                except Exception as e:
-                    update_job_failed(job_id, f'语音块 {chunk.index} 合成失败: {str(e)}')
-                    return
-
-                progress = 0.2 + (0.3 * (i + 1) / len(chunks))
-                update_job_progress(job_id, progress, 'synthesizing_voice', f'正在合成语音 ({i + 1}/{len(chunks)})')
-
-            # Concatenate voice audio
-            gap = request_data.get('subtitle_options', {}).get('gap', 0.3)
-            full_voice_audio = concat_wavs(wav_infos, gap=gap)
-
-            # Build subtitle timeline
-            chunk_durations = [info['frames'] / info['framerate'] for info in wav_infos]
-            subtitle_timeline = build_subtitle_timeline(chunks, chunk_durations, gap=gap, subtitle_segments=subtitle_segments)
+            full_voice_audio = voice_track['voice_audio']
+            subtitle_timeline = voice_track['subtitle_timeline']
 
             # Stage 3: Mix audio
             update_job_progress(job_id, 0.6, 'mixing_audio', '正在混合音频')
@@ -225,7 +302,7 @@ def _process_job(job_id: str, app):
                     duration=subtitle_timeline[-1]['end'] if subtitle_timeline else 0,
                     resolution=resolution,
                     scenes=[],
-                    voice_chunks=[{'index': c.index, 'text': c.text} for c in chunks],
+                    voice_chunks=voice_track.get('voice_chunks', []),
                     subtitles=subtitle_timeline,
                     audio={'voice': f'{title}_完整旁白.wav', 'mixed': f'{title}_混音音频.wav'},
                 )
