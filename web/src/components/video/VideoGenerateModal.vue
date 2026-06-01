@@ -108,6 +108,9 @@ const selectedTemplate = ref(null)
 const scenes = ref([])
 const speakerProfiles = ref({})
 const audioOptions = ref({
+  voice_source: props.prefill?.audio_options?.voice_source || 'generate',
+  voice_workflow_id: props.prefill?.audio_options?.voice_workflow_id || null,
+  bgm_path: props.prefill?.audio_options?.bgm_path || null,
   bgm_enabled: false,
   bgm_volume: 0.18,
   bgm_fade_in: 1.0,
@@ -124,6 +127,9 @@ watch(() => props.open, (val) => {
     currentJobId.value = null
     selectedTemplate.value = null
     audioOptions.value = {
+      voice_source: props.prefill?.audio_options?.voice_source || 'generate',
+      voice_workflow_id: props.prefill?.audio_options?.voice_workflow_id || null,
+      bgm_path: props.prefill?.audio_options?.bgm_path || null,
       bgm_enabled: props.prefill?.audio_options?.bgm_enabled ?? false,
       bgm_volume: props.prefill?.audio_options?.bgm_volume ?? 0.18,
       bgm_fade_in: props.prefill?.audio_options?.bgm_fade_in ?? 1.0,
@@ -166,6 +172,8 @@ const handleGenerate = async () => {
       scenes: uploadedScenes,
       speaker_profiles: speakerProfiles.value,
       audio_options: audioOptions.value,
+      voice_source: audioOptions.value.voice_source || 'generate',
+      voice_workflow_id: audioOptions.value.voice_workflow_id || null,
       subtitle_options: props.prefill?.subtitle_options || undefined,
       voice_description: props.prefill?.voice_description,
       source_context: props.prefill?.source_context,

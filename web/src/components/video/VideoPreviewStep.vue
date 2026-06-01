@@ -17,6 +17,9 @@
           </a-tag>
         </span>
       </a-descriptions-item>
+      <a-descriptions-item label="音频来源">
+        {{ audioOptions.voice_source === 'workflow' ? `配音工程 #${audioOptions.voice_workflow_id}` : '实时生成' }}
+      </a-descriptions-item>
       <a-descriptions-item label="BGM">
         {{ audioOptions.bgm_enabled ? '开启' : '关闭' }}
         <span v-if="audioOptions.bgm_enabled"> ({{ Math.round(audioOptions.bgm_volume * 100) }}%)</span>

@@ -39,7 +39,7 @@
           <a-upload
             :before-upload="handleBgmUpload"
             :show-upload-list="false"
-            accept="audio/*"
+            accept=".wav"
           >
             <a-button>
               {{ bgmFile ? '更换 BGM' : '上传 BGM' }}
@@ -111,7 +111,8 @@
 
 <script setup>
 import { ref, watch, onMounted } from 'vue'
-import { voiceWorkflowsApi } from '../../api'
+import { message } from 'ant-design-vue'
+import { videoApi, voiceWorkflowsApi } from '../../api'
 
 const props = defineProps({
   audioOptions: { type: Object, default: () => ({}) },
@@ -122,13 +123,14 @@ const emit = defineEmits(['update:audioOptions', 'prev', 'next'])
 const localOptions = ref({
   voice_source: 'generate',
   voice_workflow_id: null,
+  bgm_path: null,
   ...props.audioOptions,
 })
 const bgmFile = ref(null)
 const workflows = ref([])
 
 watch(() => props.audioOptions, (val) => {
-  localOptions.value = { voice_source: 'generate', voice_workflow_id: null, ...val }
+  localOptions.value = { voice_source: 'generate', voice_workflow_id: null, bgm_path: null, ...val }
 })
 
 onMounted(async () => {
@@ -144,13 +146,33 @@ const filterWorkflowOption = (input, option) => {
   return option.children[0].children.toLowerCase().includes(input.toLowerCase())
 }
 
-const handleBgmUpload = (file) => {
-  bgmFile.value = file
+const handleBgmUpload = async (file) => {
+  if (!file.name?.toLowerCase().endsWith('.wav')) {
+    message.error('第一阶段只支持 WAV 格式 BGM')
+    return false
+  }
+
+  try {
+    const formData = new FormData()
+    formData.append('audio', file)
+    const { data } = await videoApi.uploadAudio(formData)
+    bgmFile.value = file
+    localOptions.value.bgm_path = data.path
+    emit('update:audioOptions', { ...localOptions.value })
+    message.success('BGM 上传成功')
+  } catch (error) {
+    message.error(error.response?.data?.error || 'BGM 上传失败')
+  }
+
   return false
 }
 
 const handleNext = () => {
-  emit('update:audioOptions', localOptions.value)
+  if (localOptions.value.voice_source === 'workflow' && !localOptions.value.voice_workflow_id) {
+    message.error('请选择配音工程')
+    return
+  }
+  emit('update:audioOptions', { ...localOptions.value })
   emit('next')
 }
 </script>
