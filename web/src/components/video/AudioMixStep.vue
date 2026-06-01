@@ -172,6 +172,10 @@ const handleNext = () => {
     message.error('请选择配音工程')
     return
   }
+  if (localOptions.value.bgm_enabled && !localOptions.value.bgm_path) {
+    message.error('请先上传 BGM 文件')
+    return
+  }
   emit('update:audioOptions', { ...localOptions.value })
   emit('next')
 }

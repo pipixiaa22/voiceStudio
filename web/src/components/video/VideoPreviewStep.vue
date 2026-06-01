@@ -18,7 +18,7 @@
         </span>
       </a-descriptions-item>
       <a-descriptions-item label="音频来源">
-        {{ audioOptions.voice_source === 'workflow' ? `配音工程 #${audioOptions.voice_workflow_id}` : '实时生成' }}
+        {{ audioOptions.voice_source === 'workflow' ? (audioOptions.voice_workflow_id ? `配音工程 #${audioOptions.voice_workflow_id}` : '配音工程未选择') : '实时生成' }}
       </a-descriptions-item>
       <a-descriptions-item label="BGM">
         {{ audioOptions.bgm_enabled ? '开启' : '关闭' }}
