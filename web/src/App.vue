@@ -56,6 +56,15 @@
               </template>
               <span>配音工作台</span>
             </a-menu-item>
+            <a-menu-item key="/novels">
+              <template #icon>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                </svg>
+              </template>
+              <span>剧情续写</span>
+            </a-menu-item>
           </a-menu>
           <a-tooltip title="设置">
             <a-button type="text" class="settings-btn" @click="openDefaultSettings">
@@ -113,6 +122,7 @@ onUnmounted(() => {
 const selectedKeys = computed(() => {
   if (route.path.startsWith('/discovery')) return ['/discovery']
   if (route.path.startsWith('/voice-workflows')) return ['/voice-workflows']
+  if (route.path.startsWith('/novels')) return ['/novels']
   if (route.path === '/' || route.path.startsWith('/edit')) return ['/']
   return [route.path]
 })
