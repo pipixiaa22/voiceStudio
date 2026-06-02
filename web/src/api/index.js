@@ -216,6 +216,17 @@ export const novelsApi = {
 
   // Generation
   getGeneration: (gid) => api.get(`/novels/generations/${gid}`),
+
+  // Memories
+  listMemories: (pid, params) => api.get(`/novels/${pid}/memories`, { params }),
+  createMemory: (pid, data) => api.post(`/novels/${pid}/memories`, data),
+  updateMemory: (pid, mid, data) => api.patch(`/novels/${pid}/memories/${mid}`, data),
+  deleteMemory: (pid, mid) => api.delete(`/novels/${pid}/memories/${mid}`),
+  searchMemories: (pid, data) => api.post(`/novels/${pid}/memories/search`, data),
+  reindexMemories: (pid) => api.post(`/novels/${pid}/memories/reindex`),
+  listMemoryChanges: (pid) => api.get(`/novels/${pid}/memory-changes`),
+  confirmMemoryChange: (pid, cid) => api.post(`/novels/${pid}/memory-changes/${cid}/confirm`),
+  rejectMemoryChange: (pid, cid) => api.post(`/novels/${pid}/memory-changes/${cid}/reject`),
 }
 
 export default api

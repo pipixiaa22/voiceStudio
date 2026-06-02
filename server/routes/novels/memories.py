@@ -57,6 +57,14 @@ def create_memory(project_id):
 
     db.session.add(memory)
     db.session.commit()
+
+    # Index into vector store (best effort)
+    try:
+        from server.services.memory.memory_writer import index_memory
+        index_memory(memory)
+    except Exception:
+        pass
+
     return jsonify(memory.to_dict()), 201
 
 
@@ -102,3 +110,37 @@ def list_memory_changes(project_id):
     changes = NovelMemoryChange.query.filter_by(project_id=project_id) \
         .order_by(NovelMemoryChange.created_at.desc()).all()
     return jsonify([c.to_dict() for c in changes])
+
+
+@novels_bp.route('/api/novels/<int:project_id>/memories/reindex', methods=['POST'])
+def reindex_memories(project_id):
+    NovelProject.query.get_or_404(project_id)
+    memories = NovelMemory.query.filter_by(project_id=project_id, status='active').all()
+
+    from server.services.memory.vector_store import rebuild_index
+    count = rebuild_index(project_id, memories)
+
+    # Update vector_status
+    for mem in memories:
+        mem.vector_status = 'indexed'
+    db.session.commit()
+
+    return jsonify({'indexed_chunks': count, 'memories': len(memories)})
+
+
+@novels_bp.route('/api/novels/<int:project_id>/memories/search', methods=['POST'])
+def search_memories(project_id):
+    NovelProject.query.get_or_404(project_id)
+    data = request.get_json() or {}
+    query = data.get('query', '')
+    k = data.get('k', 10)
+    memory_type = data.get('memory_type')
+
+    from server.services.memory.retriever import retrieve_memories, retrieve_by_type
+
+    if memory_type:
+        results = retrieve_by_type(project_id, memory_type, query, k=k)
+    else:
+        results = retrieve_memories(project_id, query, k=k)
+
+    return jsonify({'results': results, 'query': query})
