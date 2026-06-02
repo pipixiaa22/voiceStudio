@@ -155,4 +155,67 @@ export const systemApi = {
   ls: (path) => api.get('/system/ls', { params: { path } }),
 }
 
+export const novelsApi = {
+  // Projects
+  listProjects: (params) => api.get('/novels', { params }),
+  createProject: (data) => api.post('/novels', data),
+  getProject: (id) => api.get(`/novels/${id}`),
+  updateProject: (id, data) => api.put(`/novels/${id}`, data),
+  deleteProject: (id) => api.delete(`/novels/${id}`),
+
+  // Outline
+  getOutline: (pid) => api.get(`/novels/${pid}/outline`),
+  createOutlineNode: (pid, data) => api.post(`/novels/${pid}/outline`, data),
+  updateOutlineNode: (pid, nid, data) => api.put(`/novels/${pid}/outline/${nid}`, data),
+  deleteOutlineNode: (pid, nid) => api.delete(`/novels/${pid}/outline/${nid}`),
+  generateBlueprint: (pid, data) => api.post(`/novels/${pid}/blueprint/generate`, data),
+
+  // Chapters
+  listChapters: (pid) => api.get(`/novels/${pid}/chapters`),
+  createChapter: (pid, data) => api.post(`/novels/${pid}/chapters`, data),
+  getChapter: (pid, cid) => api.get(`/novels/${pid}/chapters/${cid}`),
+  updateChapter: (pid, cid, data) => api.put(`/novels/${pid}/chapters/${cid}`, data),
+  deleteChapter: (pid, cid) => api.delete(`/novels/${pid}/chapters/${cid}`),
+  confirmChapter: (pid, cid) => api.post(`/novels/${pid}/chapters/${cid}/confirm`),
+
+  // Versions
+  generateVersions: (pid, cid, data) => api.post(`/novels/${pid}/chapters/${cid}/generate-versions`, data),
+  listVersions: (pid, cid) => api.get(`/novels/${pid}/chapters/${cid}/versions`),
+  acceptVersion: (pid, cid, vid) => api.post(`/novels/${pid}/chapters/${cid}/versions/${vid}/accept`),
+  deleteVersion: (pid, cid, vid) => api.delete(`/novels/${pid}/chapters/${cid}/versions/${vid}`),
+
+  // Entities & Relations
+  listEntities: (pid, params) => api.get(`/novels/${pid}/entities`, { params }),
+  createEntity: (pid, data) => api.post(`/novels/${pid}/entities`, data),
+  getEntity: (pid, eid) => api.get(`/novels/${pid}/entities/${eid}`),
+  updateEntity: (pid, eid, data) => api.put(`/novels/${pid}/entities/${eid}`, data),
+  deleteEntity: (pid, eid) => api.delete(`/novels/${pid}/entities/${eid}`),
+  listRelations: (pid) => api.get(`/novels/${pid}/relations`),
+  createRelation: (pid, data) => api.post(`/novels/${pid}/relations`, data),
+  updateRelation: (pid, rid, data) => api.put(`/novels/${pid}/relations/${rid}`, data),
+  deleteRelation: (pid, rid) => api.delete(`/novels/${pid}/relations/${rid}`),
+
+  // Events & Event Relations
+  listEvents: (pid) => api.get(`/novels/${pid}/events`),
+  createEvent: (pid, data) => api.post(`/novels/${pid}/events`, data),
+  getEvent: (pid, eid) => api.get(`/novels/${pid}/events/${eid}`),
+  updateEvent: (pid, eid, data) => api.put(`/novels/${pid}/events/${eid}`, data),
+  deleteEvent: (pid, eid) => api.delete(`/novels/${pid}/events/${eid}`),
+  createEventRelation: (pid, data) => api.post(`/novels/${pid}/event-relations`, data),
+  updateEventRelation: (pid, rid, data) => api.put(`/novels/${pid}/event-relations/${rid}`, data),
+  deleteEventRelation: (pid, rid) => api.delete(`/novels/${pid}/event-relations/${rid}`),
+
+  // Graph
+  getCharacterGraph: (pid) => api.get(`/novels/${pid}/graph/characters`),
+  getEventGraph: (pid) => api.get(`/novels/${pid}/graph/events`),
+  updateGraphLayout: (pid, data) => api.put(`/novels/${pid}/graph/layout`, data),
+  extractGraph: (pid, cid, data) => api.post(`/novels/${pid}/chapters/${cid}/extract-graph`, data),
+  acceptGraphChange: (pid, gid) => api.post(`/novels/${pid}/graph-changes/${gid}/accept`),
+  rejectGraphChange: (pid, gid) => api.post(`/novels/${pid}/graph-changes/${gid}/reject`),
+  reviewChapter: (pid, cid, data) => api.post(`/novels/${pid}/chapters/${cid}/review`, data),
+
+  // Generation
+  getGeneration: (gid) => api.get(`/novels/generations/${gid}`),
+}
+
 export default api
