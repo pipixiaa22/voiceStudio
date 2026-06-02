@@ -2,6 +2,8 @@
 from flask import request, jsonify
 from server.models import db
 from server.models.novel.event import NovelEvent, NovelEventRelation
+from server.models.novel.entity import NovelEntity
+from server.models.novel.chapter import NovelChapter
 from server.models.novel.project import NovelProject
 from server.routes.novels import novels_bp
 
@@ -21,6 +23,17 @@ def create_event(project_id):
     data = request.get_json() or {}
     if not data.get('title'):
         return jsonify({'error': '标题不能为空'}), 400
+
+    # Validate chapter belongs to this project
+    if data.get('chapter_id'):
+        chapter = NovelChapter.query.get(data['chapter_id'])
+        if not chapter or chapter.project_id != project_id:
+            return jsonify({'error': '章节不属于该项目'}), 400
+    # Validate location entity belongs to this project
+    if data.get('location_entity_id'):
+        loc = NovelEntity.query.get(data['location_entity_id'])
+        if not loc or loc.project_id != project_id:
+            return jsonify({'error': '地点实体不属于该项目'}), 400
 
     event = NovelEvent(
         project_id=project_id,
@@ -58,6 +71,15 @@ def update_event(project_id, event_id):
         return jsonify({'error': '事件不属于该项目'}), 400
 
     data = request.get_json() or {}
+    # Validate chapter/location references if being changed
+    if 'chapter_id' in data and data['chapter_id']:
+        chapter = NovelChapter.query.get(data['chapter_id'])
+        if not chapter or chapter.project_id != project_id:
+            return jsonify({'error': '章节不属于该项目'}), 400
+    if 'location_entity_id' in data and data['location_entity_id']:
+        loc = NovelEntity.query.get(data['location_entity_id'])
+        if not loc or loc.project_id != project_id:
+            return jsonify({'error': '地点实体不属于该项目'}), 400
     for field in ('title', 'summary', 'event_type', 'timeline_order',
                   'chapter_id', 'location_entity_id', 'node_x', 'node_y'):
         if field in data:
@@ -96,6 +118,14 @@ def create_event_relation(project_id):
         return jsonify({'error': '源事件和目标事件不能为空'}), 400
     if not data.get('relation_type'):
         return jsonify({'error': '关系类型不能为空'}), 400
+
+    # Validate both events belong to this project
+    source = NovelEvent.query.get(data['source_event_id'])
+    target = NovelEvent.query.get(data['target_event_id'])
+    if not source or source.project_id != project_id:
+        return jsonify({'error': '源事件不属于该项目'}), 400
+    if not target or target.project_id != project_id:
+        return jsonify({'error': '目标事件不属于该项目'}), 400
 
     relation = NovelEventRelation(
         project_id=project_id,

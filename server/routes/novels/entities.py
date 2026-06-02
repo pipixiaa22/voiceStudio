@@ -104,6 +104,14 @@ def create_relation(project_id):
     if not data.get('relation_type'):
         return jsonify({'error': '关系类型不能为空'}), 400
 
+    # Validate both entities belong to this project
+    source = NovelEntity.query.get(data['source_entity_id'])
+    target = NovelEntity.query.get(data['target_entity_id'])
+    if not source or source.project_id != project_id:
+        return jsonify({'error': '源实体不属于该项目'}), 400
+    if not target or target.project_id != project_id:
+        return jsonify({'error': '目标实体不属于该项目'}), 400
+
     relation = NovelRelation(
         project_id=project_id,
         source_entity_id=data['source_entity_id'],
@@ -129,6 +137,15 @@ def update_relation(project_id, relation_id):
         return jsonify({'error': '关系不属于该项目'}), 400
 
     data = request.get_json() or {}
+    # Validate entity references if being changed
+    if 'source_entity_id' in data:
+        source = NovelEntity.query.get(data['source_entity_id'])
+        if not source or source.project_id != project_id:
+            return jsonify({'error': '源实体不属于该项目'}), 400
+    if 'target_entity_id' in data:
+        target = NovelEntity.query.get(data['target_entity_id'])
+        if not target or target.project_id != project_id:
+            return jsonify({'error': '目标实体不属于该项目'}), 400
     for field in ('relation_type', 'label', 'description', 'strength', 'status',
                   'source_entity_id', 'target_entity_id'):
         if field in data:

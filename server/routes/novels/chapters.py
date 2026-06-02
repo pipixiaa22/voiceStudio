@@ -2,6 +2,7 @@
 from flask import request, jsonify
 from server.models import db
 from server.models.novel.chapter import NovelChapter, NovelChapterVersion
+from server.models.novel.outline import NovelOutlineNode
 from server.models.novel.project import NovelProject
 from server.routes.novels import novels_bp
 
@@ -19,6 +20,12 @@ def list_chapters(project_id):
 def create_chapter(project_id):
     NovelProject.query.get_or_404(project_id)
     data = request.get_json() or {}
+
+    # Validate outline node belongs to this project
+    if data.get('outline_node_id'):
+        node = NovelOutlineNode.query.get(data['outline_node_id'])
+        if not node or node.project_id != project_id:
+            return jsonify({'error': '大纲节点不属于该项目'}), 400
 
     max_order = db.session.query(db.func.max(NovelChapter.order_index)).filter_by(
         project_id=project_id
@@ -64,8 +71,13 @@ def update_chapter(project_id, chapter_id):
         chapter.order_index = data['order_index']
     if 'target_words' in data:
         chapter.target_words = data['target_words']
-    if 'outline_node_id' in data:
+    if 'outline_node_id' in data and data['outline_node_id']:
+        node = NovelOutlineNode.query.get(data['outline_node_id'])
+        if not node or node.project_id != project_id:
+            return jsonify({'error': '大纲节点不属于该项目'}), 400
         chapter.outline_node_id = data['outline_node_id']
+    elif 'outline_node_id' in data:
+        chapter.outline_node_id = None
 
     db.session.commit()
     return jsonify(chapter.to_dict())
