@@ -157,15 +157,23 @@ def confirm_memory_change(project_id, change_id):
 
     target_memory = None
     if change.change_type == 'add':
+        from server.services.memory.document_types import MEMORY_TYPES
+        memory_type = after.get('memory_type', 'summary')
+        if memory_type not in MEMORY_TYPES:
+            memory_type = 'summary'
+        importance = after.get('importance', 3)
+        if not isinstance(importance, int) or not (1 <= importance <= 5):
+            importance = 3
+
         memory = NovelMemory(
             project_id=project_id,
             source_type=after.get('source_type', 'ai_extract'),
             source_id=after.get('source_id'),
-            memory_type=after.get('memory_type', 'summary'),
+            memory_type=memory_type,
             title=after.get('title'),
             content=after.get('content', ''),
             summary=after.get('summary'),
-            importance=after.get('importance', 3),
+            importance=importance,
             status='active',
             vector_status='pending',
         )

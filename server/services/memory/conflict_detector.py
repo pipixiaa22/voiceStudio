@@ -1,6 +1,9 @@
 """Detect conflicts between new chapter goals and existing memories."""
 
+import logging
 from server.services.memory.retriever import retrieve_memories
+
+logger = logging.getLogger(__name__)
 
 
 def detect_conflicts(project_id, chapter_goal, existing_memories=None):
@@ -64,6 +67,7 @@ def detect_conflicts(project_id, chapter_goal, existing_memories=None):
             timeout=30,
         )
     except Exception:
+        logger.exception('Conflict detection LLM call failed')
         return []
 
     from server.services.memory.utils import parse_memory_json

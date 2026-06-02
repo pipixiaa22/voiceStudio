@@ -109,7 +109,11 @@ def rebuild_index(project_id, memories):
 
     # Clear existing collection
     try:
-        store._collection.delete(where={})
+        # Try public API first, fall back to internal if needed
+        try:
+            store.delete(where={})
+        except (TypeError, AttributeError):
+            store._collection.delete(where={})
     except Exception:
         logger.warning('Failed to clear vector collection for project %s', project_id)
 
