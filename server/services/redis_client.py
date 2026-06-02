@@ -151,11 +151,14 @@ def rate_limit(category, limit, window):
         def my_route(): ...
     """
     from functools import wraps
-    from flask import request, jsonify
+    from flask import request, jsonify, current_app
 
     def decorator(f):
         @wraps(f)
         def wrapper(*args, **kwargs):
+            # Skip rate limiting in test mode
+            if current_app.config.get('TESTING'):
+                return f(*args, **kwargs)
             ip = request.remote_addr or 'unknown'
             key = redis_key('ratelimit', category, ip)
             allowed, remaining = rate_limit_check(key, limit, window)
