@@ -123,7 +123,7 @@ def delete_memory(project_id, memory_id):
 @novels_bp.route('/api/novels/<int:project_id>/memory-changes', methods=['GET'])
 def list_memory_changes(project_id):
     NovelProject.query.get_or_404(project_id)
-    changes = NovelMemoryChange.query.filter_by(project_id=project_id) \
+    changes = NovelMemoryChange.query.filter_by(project_id=project_id, status='pending') \
         .order_by(NovelMemoryChange.created_at.desc()).all()
     return jsonify([c.to_dict() for c in changes])
 
@@ -135,11 +135,15 @@ def confirm_memory_change(project_id, change_id):
     if change.project_id != project_id:
         return jsonify({'error': '变更不属于该项目'}), 400
 
+    if change.status != 'pending':
+        return jsonify(change.to_dict())
+
     from datetime import datetime, timezone
     after = change.after
     if not after:
         return jsonify({'error': '变更数据为空'}), 400
 
+    target_memory = None
     if change.change_type == 'add':
         memory = NovelMemory(
             project_id=project_id,
@@ -156,6 +160,7 @@ def confirm_memory_change(project_id, change_id):
         db.session.add(memory)
         db.session.flush()
         change.memory_id = memory.id
+        target_memory = memory
     elif change.change_type == 'modify' and change.memory_id:
         memory = NovelMemory.query.get(change.memory_id)
         if memory:
@@ -163,10 +168,20 @@ def confirm_memory_change(project_id, change_id):
                 if field in after:
                     setattr(memory, field, after[field])
             memory.vector_status = 'pending'
+            target_memory = memory
 
     change.status = 'confirmed'
     change.confirmed_at = datetime.now(timezone.utc)
     db.session.commit()
+
+    # Index the memory into vector store (best effort)
+    if target_memory:
+        try:
+            from server.services.memory.memory_writer import index_memory
+            index_memory(target_memory)
+        except Exception:
+            pass
+
     return jsonify(change.to_dict())
 
 
@@ -176,6 +191,9 @@ def reject_memory_change(project_id, change_id):
     change = NovelMemoryChange.query.get_or_404(change_id)
     if change.project_id != project_id:
         return jsonify({'error': '变更不属于该项目'}), 400
+
+    if change.status != 'pending':
+        return jsonify(change.to_dict())
 
     change.status = 'rejected'
     db.session.commit()
@@ -190,9 +208,16 @@ def reindex_memories(project_id):
     from server.services.memory.vector_store import rebuild_index
     count = rebuild_index(project_id, memories)
 
-    # Update vector_status
-    for mem in memories:
-        mem.vector_status = 'indexed'
+    # Only mark as indexed if chunks were actually indexed
+    if count > 0:
+        for mem in memories:
+            mem.vector_status = 'indexed'
+    else:
+        # Vector store unavailable — keep as pending
+        for mem in memories:
+            if mem.vector_status != 'indexed':
+                mem.vector_status = 'pending'
+
     db.session.commit()
 
     return jsonify({'indexed_chunks': count, 'memories': len(memories)})
