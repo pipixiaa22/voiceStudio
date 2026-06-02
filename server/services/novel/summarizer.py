@@ -1,7 +1,6 @@
 # server/services/novel/summarizer.py
 from server.models import db
 from server.models.novel.chapter import NovelChapter
-from server.services.model_registry import ModelRegistry
 
 
 def generate_summary(chapter_id):
@@ -24,14 +23,13 @@ def generate_summary(chapter_id):
 【章节正文】
 {chapter.content_markdown}"""
 
-    registry = ModelRegistry()
-    provider_key, api_key = _get_active_provider()
-    provider = registry.create_provider(provider_key, api_key)
+    from server.services.novel import get_llm_provider
+    provider, default_model = get_llm_provider()
 
     messages = [{'role': 'user', 'content': prompt}]
     summary = provider.complete(
         messages,
-        model='mimo-v2.5-pro',
+        model=default_model,
         system_prompt='你是一位小说摘要撰写专家，擅长提炼章节要点。',
         max_tokens=1024,
         timeout=30,
@@ -41,11 +39,3 @@ def generate_summary(chapter_id):
     db.session.commit()
 
     return {'chapter_id': chapter_id, 'summary': chapter.summary}
-
-
-def _get_active_provider():
-    import os
-    api_key = os.environ.get('MIMO_API_KEY', '')
-    if api_key:
-        return 'mimo', api_key
-    return 'mimo', ''

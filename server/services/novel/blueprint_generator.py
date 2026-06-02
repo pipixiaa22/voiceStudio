@@ -4,7 +4,6 @@ from server.models import db
 from server.models.novel.project import NovelProject
 from server.models.novel.outline import NovelOutlineNode
 from server.models.novel.entity import NovelEntity, NovelRelation
-from server.services.model_registry import ModelRegistry
 
 
 def generate_blueprint(project_id, params):
@@ -62,14 +61,13 @@ def generate_blueprint(project_id, params):
   "key_events": ["事件1", "事件2"]
 }}"""
 
-    registry = ModelRegistry()
-    provider_key, api_key = _get_active_provider()
-    provider = registry.create_provider(provider_key, api_key)
+    from server.services.novel import get_llm_provider
+    provider, default_model = get_llm_provider()
 
     messages = [{'role': 'user', 'content': f'一句话创意：{premise}'}]
     response = provider.complete(
         messages,
-        model='mimo-v2.5-pro',
+        model=default_model,
         system_prompt=system_prompt,
         max_tokens=8192,
         timeout=120,
@@ -181,11 +179,3 @@ def _parse_json_response(text):
             pass
 
     raise ValueError('无法解析 AI 返回的 JSON')
-
-
-def _get_active_provider():
-    import os
-    api_key = os.environ.get('MIMO_API_KEY', '')
-    if api_key:
-        return 'mimo', api_key
-    return 'mimo', ''

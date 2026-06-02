@@ -5,7 +5,6 @@ from server.models.novel.chapter import NovelChapter
 from server.models.novel.project import NovelProject
 from server.models.novel.graph_change import NovelGraphChange
 from server.services.novel.prompt_templates import build_extract_prompt
-from server.services.model_registry import ModelRegistry
 
 
 def extract_graph_changes(project_id, chapter_id):
@@ -18,14 +17,13 @@ def extract_graph_changes(project_id, chapter_id):
     prompt = build_extract_prompt(chapter.content_markdown)
 
     # Call LLM
-    registry = ModelRegistry()
-    provider_key, api_key = _get_active_provider()
-    provider = registry.create_provider(provider_key, api_key)
+    from server.services.novel import get_llm_provider
+    provider, default_model = get_llm_provider()
 
     messages = [{'role': 'user', 'content': prompt}]
     response = provider.complete(
         messages,
-        model='mimo-v2.5-pro',
+        model=default_model,
         system_prompt='你是一位小说知识图谱分析专家，擅长从小说文本中提取人物、关系、事件和因果关系。',
         max_tokens=4096,
         timeout=60,
@@ -79,11 +77,3 @@ def _parse_json_response(text):
         except json.JSONDecodeError:
             pass
     raise ValueError('无法解析 AI 返回的 JSON')
-
-
-def _get_active_provider():
-    import os
-    api_key = os.environ.get('MIMO_API_KEY', '')
-    if api_key:
-        return 'mimo', api_key
-    return 'mimo', ''
