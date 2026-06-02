@@ -82,6 +82,7 @@ def delete_project(project_id):
     from server.models.novel.entity import NovelEntity, NovelRelation
     from server.models.novel.event import NovelEvent, NovelEventRelation
     from server.models.novel.graph_change import NovelGraphChange, NovelGeneration
+    from server.models.novel.memory import NovelMemory, NovelMemoryChange
 
     # Delete in dependency order (children first, then parents)
     chapter_ids = [c.id for c in NovelChapter.query.filter_by(project_id=project_id).all()]
@@ -104,6 +105,10 @@ def delete_project(project_id):
     NovelEntity.query.filter_by(project_id=project_id).delete()
     # 8. NovelGeneration has no FK deps on other novel tables
     NovelGeneration.query.filter_by(project_id=project_id).delete()
+    # 9. NovelMemoryChange references memory — delete before memory
+    NovelMemoryChange.query.filter_by(project_id=project_id).delete()
+    # 10. NovelMemory
+    NovelMemory.query.filter_by(project_id=project_id).delete()
 
     db.session.delete(project)
     db.session.commit()

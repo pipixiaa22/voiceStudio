@@ -109,13 +109,14 @@ def update_memory(project_id, memory_id):
     if 'metadata' in data:
         memory.metadata_ = data['metadata']
 
-    if 'content' in data:
+    needs_reindex = any(k in data for k in ('content', 'memory_type', 'importance'))
+    if needs_reindex:
         memory.vector_status = 'pending'
 
     db.session.commit()
 
-    # Re-index into vector store if content changed (best effort)
-    if 'content' in data:
+    # Re-index if content or metadata-affecting fields changed (best effort)
+    if needs_reindex:
         try:
             from server.services.memory.memory_writer import index_memory
             index_memory(memory)
@@ -199,6 +200,13 @@ def confirm_memory_change(project_id, change_id):
         memory = NovelMemory.query.get(change.memory_id)
         if not memory:
             return jsonify({'error': '目标记忆已删除'}), 404
+        # Validate fields before applying
+        if 'memory_type' in after and after['memory_type'] not in MEMORY_TYPES:
+            after['memory_type'] = memory.memory_type  # keep existing
+        if 'importance' in after:
+            imp = after['importance']
+            if not isinstance(imp, int) or not (1 <= imp <= 5):
+                after['importance'] = memory.importance  # keep existing
         for field in ('title', 'content', 'summary', 'importance', 'memory_type'):
             if field in after:
                 setattr(memory, field, after[field])
