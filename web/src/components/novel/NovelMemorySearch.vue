@@ -11,7 +11,7 @@
       <div v-for="(r, i) in store.memorySearchResults" :key="i" class="search-item">
         <div class="search-item-header">
           <a-tag :color="typeColor(r.memory_type)" size="small">{{ r.memory_type }}</a-tag>
-          <span class="search-score">相关度: {{ (r.score * 100).toFixed(0) }}%</span>
+          <span class="search-score">相关度: {{ Math.min(100, (r.score * 100)).toFixed(0) }}%</span>
         </div>
         <p class="search-item-content">{{ r.content }}</p>
       </div>
@@ -22,17 +22,14 @@
 
 <script setup>
 import { ref } from 'vue'
+import { message } from 'ant-design-vue'
 import { useNovelsStore } from '../../stores/novels'
+import { typeColor } from '../../utils/memoryTypes'
 
 const store = useNovelsStore()
 const query = ref('')
 const searching = ref(false)
 const searched = ref(false)
-
-const typeColor = (t) => ({
-  character: 'blue', world_rule: 'purple', event: 'orange',
-  foreshadowing: 'gold', relationship: 'cyan', style: 'green', summary: 'default',
-}[t] || 'default')
 
 const handleSearch = async () => {
   if (!query.value.trim() || !store.currentProject) return
@@ -40,6 +37,8 @@ const handleSearch = async () => {
   searched.value = true
   try {
     await store.searchMemories(store.currentProject.id, query.value)
+  } catch {
+    message.error('搜索失败')
   } finally {
     searching.value = false
   }

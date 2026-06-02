@@ -47,7 +47,7 @@ export const useNovelsStore = defineStore('novels', {
     generationEventSource: null,
 
     // UI state
-    activeMode: 'write', // 'write' | 'graph' | 'review'
+    activeMode: 'write', // 'write' | 'graph' | 'review' | 'memory'
     graphType: 'characters', // 'characters' | 'events'
     selectedEntityId: null,
     selectedRelationId: null,
@@ -491,6 +491,7 @@ export const useNovelsStore = defineStore('novels', {
     async confirmMemoryChange(pid, cid) {
       await novelsApi.confirmMemoryChange(pid, cid)
       this.memoryChanges = this.memoryChanges.filter(c => c.id !== cid)
+      await this.fetchMemories(pid)
     },
 
     async rejectMemoryChange(pid, cid) {

@@ -18,12 +18,12 @@
           <a-select-option value="summary">摘要</a-select-option>
         </a-select>
         <a-button size="small" @click="showCreateModal = true">新增</a-button>
-        <a-button size="small" @click="handleReindex">重建索引</a-button>
+        <a-button size="small" :loading="reindexing" @click="handleReindex">重建索引</a-button>
       </div>
     </div>
 
     <a-spin :spinning="store.memoryLoading">
-      <a-list :data-source="filteredMemories" size="small">
+      <a-list :data-source="store.memories" size="small">
         <template #renderItem="{ item }">
           <a-list-item>
             <a-list-item-meta>
@@ -56,6 +56,7 @@
       v-model:open="showCreateModal"
       :title="editingMemory ? '编辑记忆' : '新增记忆'"
       @ok="handleSave"
+      @cancel="resetForm"
       width="600px"
     >
       <a-form layout="vertical">
@@ -85,34 +86,23 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { useNovelsStore } from '../../stores/novels'
+import { typeColor, typeLabel } from '../../utils/memoryTypes'
 
 const store = useNovelsStore()
 const searchKeyword = ref('')
 const filterType = ref(undefined)
 const showCreateModal = ref(false)
 const editingMemory = ref(null)
+const reindexing = ref(false)
 const form = ref({ title: '', content: '', memory_type: 'character', importance: 3 })
 
-const filteredMemories = computed(() => {
-  let list = store.memories
-  if (filterType.value) {
-    list = list.filter(m => m.memory_type === filterType.value)
-  }
-  return list
-})
-
-const typeLabel = (t) => ({
-  character: '人物', world_rule: '世界观', event: '事件',
-  foreshadowing: '伏笔', relationship: '关系', style: '文风', summary: '摘要',
-}[t] || t)
-
-const typeColor = (t) => ({
-  character: 'blue', world_rule: 'purple', event: 'orange',
-  foreshadowing: 'gold', relationship: 'cyan', style: 'green', summary: 'default',
-}[t] || 'default')
+const resetForm = () => {
+  editingMemory.value = null
+  form.value = { title: '', content: '', memory_type: 'character', importance: 3 }
+}
 
 const handleSearch = () => {
   const params = {}
@@ -137,8 +127,7 @@ const handleSave = async () => {
       message.success('已创建')
     }
     showCreateModal.value = false
-    editingMemory.value = null
-    form.value = { title: '', content: '', memory_type: 'character', importance: 3 }
+    resetForm()
   } catch {
     message.error('操作失败')
   }
@@ -154,12 +143,15 @@ const handleDelete = async (id) => {
 }
 
 const handleReindex = async () => {
+  reindexing.value = true
   try {
     await store.reindexMemories(store.currentProject.id)
     await store.fetchMemories(store.currentProject.id)
     message.success('索引已重建')
   } catch {
     message.error('重建失败')
+  } finally {
+    reindexing.value = false
   }
 }
 
