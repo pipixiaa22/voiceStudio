@@ -1,8 +1,11 @@
+import logging
 from flask import request, jsonify
 from server.models import db
 from server.models.novel.project import NovelProject
 from server.models.novel.memory import NovelMemory, NovelMemoryChange
 from server.routes.novels import novels_bp
+
+logger = logging.getLogger(__name__)
 
 
 @novels_bp.route('/api/novels/<int:project_id>/memories', methods=['GET'])
@@ -40,15 +43,24 @@ def create_memory(project_id):
     if not data.get('content'):
         return jsonify({'error': '内容不能为空'}), 400
 
+    from server.services.memory.document_types import MEMORY_TYPES
+    memory_type = data.get('memory_type', 'summary')
+    if memory_type not in MEMORY_TYPES:
+        return jsonify({'error': f'无效的记忆类型: {memory_type}'}), 400
+
+    importance = data.get('importance', 3)
+    if not isinstance(importance, int) or not (1 <= importance <= 5):
+        importance = 3
+
     memory = NovelMemory(
         project_id=project_id,
         title=data.get('title'),
         content=data['content'],
-        memory_type=data.get('memory_type', 'general'),
+        memory_type=memory_type,
         source_type=data.get('source_type', 'manual_note'),
         source_id=data.get('source_id'),
         summary=data.get('summary'),
-        importance=data.get('importance', 3),
+        importance=importance,
         status=data.get('status', 'active'),
         vector_status='pending',
     )
@@ -63,7 +75,7 @@ def create_memory(project_id):
         from server.services.memory.memory_writer import index_memory
         index_memory(memory)
     except Exception:
-        pass
+        logger.exception('Failed to index new memory %s', memory.id)
 
     return jsonify(memory.to_dict()), 201
 
@@ -96,7 +108,7 @@ def update_memory(project_id, memory_id):
             from server.services.memory.memory_writer import index_memory
             index_memory(memory)
         except Exception:
-            pass
+            logger.exception('Failed to re-index memory %s', memory_id)
 
     return jsonify(memory.to_dict())
 
@@ -113,7 +125,7 @@ def delete_memory(project_id, memory_id):
         from server.services.memory.vector_store import delete_by_memory_id
         delete_by_memory_id(project_id, memory_id)
     except Exception:
-        pass
+        logger.exception('Failed to delete vectors for memory %s', memory_id)
 
     db.session.delete(memory)
     db.session.commit()
@@ -161,14 +173,17 @@ def confirm_memory_change(project_id, change_id):
         db.session.flush()
         change.memory_id = memory.id
         target_memory = memory
-    elif change.change_type == 'modify' and change.memory_id:
+    elif change.change_type == 'modify':
+        if not change.memory_id:
+            return jsonify({'error': '无目标记忆'}), 400
         memory = NovelMemory.query.get(change.memory_id)
-        if memory:
-            for field in ('title', 'content', 'summary', 'importance', 'memory_type'):
-                if field in after:
-                    setattr(memory, field, after[field])
-            memory.vector_status = 'pending'
-            target_memory = memory
+        if not memory:
+            return jsonify({'error': '目标记忆已删除'}), 404
+        for field in ('title', 'content', 'summary', 'importance', 'memory_type'):
+            if field in after:
+                setattr(memory, field, after[field])
+        memory.vector_status = 'pending'
+        target_memory = memory
 
     change.status = 'confirmed'
     change.confirmed_at = datetime.now(timezone.utc)
@@ -228,7 +243,7 @@ def search_memories(project_id):
     NovelProject.query.get_or_404(project_id)
     data = request.get_json() or {}
     query = data.get('query', '')
-    k = data.get('k', 10)
+    k = min(int(data.get('k', 10)), 50)
     memory_type = data.get('memory_type')
 
     from server.services.memory.retriever import retrieve_memories, retrieve_by_type

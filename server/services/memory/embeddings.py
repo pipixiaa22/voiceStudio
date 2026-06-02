@@ -2,10 +2,12 @@
 
 import os
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
 _embeddings = None
+_embeddings_lock = threading.Lock()
 
 
 def get_embeddings():
@@ -14,31 +16,38 @@ def get_embeddings():
     Uses OpenAI-compatible embedding API. Checks for API key in order:
     1. OPENAI_API_KEY (for OpenAI embeddings)
     2. DEEPSEEK_API_KEY (for DeepSeek embeddings, if supported)
+
+    Thread-safe: uses a lock to prevent duplicate instance creation.
     """
     global _embeddings
     if _embeddings is not None:
         return _embeddings
 
-    from langchain_openai import OpenAIEmbeddings
+    with _embeddings_lock:
+        if _embeddings is not None:
+            return _embeddings
 
-    api_key = os.environ.get('OPENAI_API_KEY') or os.environ.get('DEEPSEEK_API_KEY')
-    base_url = None
+        from langchain_openai import OpenAIEmbeddings
 
-    if os.environ.get('DEEPSEEK_API_KEY') and not os.environ.get('OPENAI_API_KEY'):
-        base_url = 'https://api.deepseek.com/v1'
+        api_key = os.environ.get('OPENAI_API_KEY') or os.environ.get('DEEPSEEK_API_KEY')
+        base_url = None
 
-    if not api_key:
-        logger.warning('No embedding API key found. Memory indexing will not work.')
-        return None
+        if os.environ.get('DEEPSEEK_API_KEY') and not os.environ.get('OPENAI_API_KEY'):
+            base_url = 'https://api.deepseek.com/v1'
 
-    _embeddings = OpenAIEmbeddings(
-        api_key=api_key,
-        base_url=base_url,
-    )
-    return _embeddings
+        if not api_key:
+            logger.warning('No embedding API key found. Memory indexing will not work.')
+            return None
+
+        _embeddings = OpenAIEmbeddings(
+            api_key=api_key,
+            base_url=base_url,
+        )
+        return _embeddings
 
 
 def reset_embeddings():
     """Reset the cached embedding instance (for testing)."""
     global _embeddings
-    _embeddings = None
+    with _embeddings_lock:
+        _embeddings = None

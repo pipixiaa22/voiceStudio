@@ -66,8 +66,8 @@ def detect_conflicts(project_id, chapter_goal, existing_memories=None):
     except Exception:
         return []
 
-    from server.services.memory.memory_writer import _parse_memory_json
-    result = _parse_memory_json(response)
+    from server.services.memory.utils import parse_memory_json
+    result = parse_memory_json(response)
     if not result:
         return []
 

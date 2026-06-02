@@ -1,7 +1,13 @@
 """Memory write operations: create, update, index."""
 
+import logging
 from server.models import db
 from server.models.novel.memory import NovelMemory
+
+logger = logging.getLogger(__name__)
+
+# Re-export for backward compatibility
+from server.services.memory.utils import parse_memory_json as _parse_memory_json
 
 
 def create_memory(project_id, content, memory_type, title=None, source_type='manual_note',
@@ -55,15 +61,14 @@ def index_memory(memory):
     } for i in range(len(chunks))]
 
     try:
-        # Delete old vectors first
         delete_by_memory_id(memory.project_id, memory.id)
         ids = add_documents(memory.project_id, chunks, metadatas)
         if ids is None:
-            # Vector store unavailable (no embedding key)
             memory.vector_status = 'pending'
         else:
             memory.vector_status = 'indexed'
     except Exception:
+        logger.exception('Failed to index memory %s', memory.id)
         memory.vector_status = 'failed'
 
     db.session.commit()
@@ -93,6 +98,7 @@ def extract_and_create_changes(project_id, chapter_id, chapter_content):
     from server.services.novel import get_llm_provider
     from server.services.novel.context_builder import build_context
     from server.models.novel.chapter import NovelChapter
+    from server.services.memory.utils import parse_memory_json
 
     chapter = NovelChapter.query.get(chapter_id)
     context = build_context(project_id, chapter_id) if chapter else {}
@@ -111,24 +117,32 @@ def extract_and_create_changes(project_id, chapter_id, chapter_content):
             timeout=60,
         )
     except Exception:
+        logger.exception('LLM call failed during memory extraction')
         return []
 
-    # Parse response
-    result = _parse_memory_json(response)
+    result = parse_memory_json(response)
     if not result:
         return []
 
     changes = []
 
-    # Create "add" changes for new memories
+    # Create "add" changes for new memories (skip duplicates)
     for item in result.get('new_memories', []):
         if not item.get('content'):
             continue
+        title = item.get('title', '')
+        # Check for existing memory with same title in project
+        if title:
+            existing = NovelMemory.query.filter_by(
+                project_id=project_id, title=title, status='active'
+            ).first()
+            if existing:
+                continue
         change = NovelMemoryChange(
             project_id=project_id,
             change_type='add',
             after={
-                'title': item.get('title', ''),
+                'title': title,
                 'content': item['content'],
                 'memory_type': item.get('memory_type', 'summary'),
                 'importance': item.get('importance', 3),
@@ -142,52 +156,36 @@ def extract_and_create_changes(project_id, chapter_id, chapter_content):
         db.session.add(change)
         changes.append(change)
 
-    # Create "modify" changes for updates
+    # Create "modify" changes for updates (populate before field)
     for item in result.get('updates', []):
+        existing_title = item.get('existing_title', '')
+        existing = None
+        if existing_title:
+            existing = NovelMemory.query.filter_by(
+                project_id=project_id, title=existing_title, status='active'
+            ).first()
+
         change = NovelMemoryChange(
             project_id=project_id,
             change_type='modify',
             after={
-                'title': item.get('existing_title', ''),
+                'title': existing_title,
                 'content': item.get('new_content', ''),
                 'memory_type': item.get('memory_type', 'summary'),
             },
             source='ai_extract',
             status='pending',
         )
+        if existing:
+            change.memory_id = existing.id
+            change.before = {
+                'title': existing.title,
+                'content': existing.content,
+                'memory_type': existing.memory_type,
+                'importance': existing.importance,
+            }
         db.session.add(change)
         changes.append(change)
 
     db.session.commit()
     return changes
-
-
-def _parse_memory_json(text):
-    """Parse JSON from LLM response, handling markdown code blocks."""
-    import json
-    import re
-
-    # Try markdown code block
-    match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', text, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group(1))
-        except (json.JSONDecodeError, ValueError):
-            pass
-
-    # Try raw JSON
-    try:
-        return json.loads(text)
-    except (json.JSONDecodeError, ValueError):
-        pass
-
-    # Try brace-delimited
-    start = text.find('{')
-    end = text.rfind('}')
-    if start != -1 and end != -1:
-        try:
-            return json.loads(text[start:end + 1])
-        except (json.JSONDecodeError, ValueError):
-            pass
-
-    return None

@@ -3,7 +3,7 @@
 from server.services.memory.vector_store import search
 
 
-# Budget allocation for memory types (relative weights)
+# Type-based ranking weights
 MEMORY_TYPE_WEIGHTS = {
     'character': 1.0,
     'world_rule': 0.9,
@@ -13,6 +13,20 @@ MEMORY_TYPE_WEIGHTS = {
     'style': 0.5,
     'summary': 0.6,
 }
+
+
+def _normalize_distance(distance):
+    """Convert Chroma cosine distance [0, 2] to similarity [0, 1].
+
+    Cosine distance: 0 = identical, 2 = opposite.
+    Similarity: 1 = identical, 0 = opposite.
+    """
+    return max(0.0, 1.0 - distance / 2.0)
+
+
+def _type_weight(memory_type):
+    """Get ranking weight for a memory type."""
+    return MEMORY_TYPE_WEIGHTS.get(memory_type, 0.5)
 
 
 def retrieve_memories(project_id, query, chapter_context=None, k=10):
@@ -38,19 +52,20 @@ def retrieve_memories(project_id, query, chapter_context=None, k=10):
     for doc, score in results:
         meta = doc.metadata or {}
         importance = meta.get('importance', 3)
-        # Combine vector similarity score with importance
-        combined_score = (1 - score) * 0.7 + (importance / 5) * 0.3
+        memory_type = meta.get('memory_type', '')
+        vector_sim = _normalize_distance(score)
+        type_w = _type_weight(memory_type)
+        combined_score = vector_sim * 0.5 + (importance / 5) * 0.3 + type_w * 0.2
 
         memories.append({
             'content': doc.page_content,
-            'memory_type': meta.get('memory_type', ''),
+            'memory_type': memory_type,
             'memory_id': meta.get('memory_id', ''),
             'importance': importance,
             'score': combined_score,
-            'vector_score': 1 - score,
+            'vector_score': vector_sim,
         })
 
-    # Sort by combined score descending
     memories.sort(key=lambda m: m['score'], reverse=True)
     return memories
 
@@ -74,16 +89,30 @@ def retrieve_by_type(project_id, memory_type, query, k=5):
     memories = []
     for doc, score in results:
         meta = doc.metadata or {}
+        vector_sim = _normalize_distance(score)
         memories.append({
             'content': doc.page_content,
             'memory_type': memory_type,
             'memory_id': meta.get('memory_id', ''),
             'importance': meta.get('importance', 3),
-            'score': 1 - score,
+            'score': vector_sim,
         })
 
     memories.sort(key=lambda m: m['score'], reverse=True)
     return memories
+
+
+def _truncate_at_sentence(text, max_chars):
+    """Truncate text at a sentence boundary near max_chars."""
+    if len(text) <= max_chars:
+        return text
+    truncated = text[:max_chars]
+    # Find last sentence boundary
+    for sep in ('。', '？', '！', '；', '\n'):
+        idx = truncated.rfind(sep)
+        if idx > max_chars // 2:
+            return truncated[:idx + 1]
+    return truncated + '...'
 
 
 def format_memories_for_prompt(memories, max_chars=3000):
@@ -106,7 +135,7 @@ def format_memories_for_prompt(memories, max_chars=3000):
         if total + len(text) > max_chars:
             remaining = max_chars - total
             if remaining > 50:
-                text = text[:remaining] + '...'
+                text = _truncate_at_sentence(text, remaining)
             else:
                 break
         parts.append(text)

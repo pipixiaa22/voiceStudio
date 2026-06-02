@@ -37,21 +37,3 @@ def chunk_text(text, max_chunk_size=500, overlap=50):
         start = end - overlap
 
     return [c for c in chunks if c]
-
-
-def chunk_chapter(content, title='', max_chunk_size=500, overlap=50):
-    """Chunk a chapter's content with title prefix.
-
-    Returns:
-        List of (chunk_text, metadata) tuples.
-    """
-    if not content:
-        return []
-
-    chunks = chunk_text(content, max_chunk_size, overlap)
-    result = []
-    for i, chunk in enumerate(chunks):
-        prefix = f'【{title}】' if title else ''
-        result.append((f'{prefix}{chunk}', {'chunk_index': i}))
-
-    return result

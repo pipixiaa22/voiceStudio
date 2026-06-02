@@ -2,20 +2,24 @@
 
 import os
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
 _stores = {}
+_stores_lock = threading.Lock()
 
 
 def get_vector_store(project_id):
     """Get or create a Chroma vector store for a project.
 
     Each project gets its own collection to prevent cross-project contamination.
+    Thread-safe: uses a lock to prevent duplicate store creation.
     """
     project_id = str(project_id)
-    if project_id in _stores:
-        return _stores[project_id]
+    with _stores_lock:
+        if project_id in _stores:
+            return _stores[project_id]
 
     from server.services.memory.embeddings import get_embeddings
     embeddings = get_embeddings()
@@ -31,8 +35,16 @@ def get_vector_store(project_id):
         embedding_function=embeddings,
         persist_directory=persist_dir,
     )
-    _stores[project_id] = store
+    with _stores_lock:
+        _stores[project_id] = store
     return store
+
+
+def invalidate_store(project_id):
+    """Remove a cached store so it will be recreated on next access."""
+    project_id = str(project_id)
+    with _stores_lock:
+        _stores.pop(project_id, None)
 
 
 def add_documents(project_id, texts, metadatas=None):
@@ -81,12 +93,16 @@ def delete_by_memory_id(project_id, memory_id):
 def rebuild_index(project_id, memories):
     """Rebuild the entire vector index for a project from memory records.
 
+    Uses delete-then-add strategy. Caller should mark memories as pending
+    BEFORE calling this, and only mark indexed AFTER a successful return
+    with count > 0.
+
     Args:
         project_id: Project ID.
         memories: List of NovelMemory objects.
 
     Returns:
-        Number of indexed chunks.
+        Number of indexed chunks, or 0 if vector store unavailable.
     """
     store = get_vector_store(project_id)
     if store is None:
@@ -96,7 +112,7 @@ def rebuild_index(project_id, memories):
     try:
         store._collection.delete(where={})
     except Exception:
-        pass
+        logger.warning('Failed to clear vector collection for project %s', project_id)
 
     from server.services.memory.chunker import chunk_text
 

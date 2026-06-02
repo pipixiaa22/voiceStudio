@@ -17,7 +17,7 @@ def _json_loads(value, default):
 
 
 def _json_dumps(value):
-    return json.dumps(value or {}, ensure_ascii=False)
+    return json.dumps(value if value is not None else {}, ensure_ascii=False)
 
 
 class NovelMemory(db.Model):
@@ -70,7 +70,7 @@ class NovelMemoryChange(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     project_id = db.Column(db.Integer, db.ForeignKey('novel_projects.id'), nullable=False, index=True)
-    memory_id = db.Column(db.Integer, nullable=True, index=True)
+    memory_id = db.Column(db.Integer, db.ForeignKey('novel_memories.id'), nullable=True, index=True)
     change_type = db.Column(db.String(30), nullable=False)
     before_json = db.Column(db.Text, nullable=True)
     after_json = db.Column(db.Text, nullable=True)
