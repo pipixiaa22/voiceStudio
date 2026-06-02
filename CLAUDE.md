@@ -30,6 +30,12 @@ uv run python -m server.app    # Flask only, debug mode on :5002
 # or: uv run subtitle-web      (same, via pyproject.toml script entry)
 ```
 
+### Video Worker (Redis queue mode)
+```bash
+REDIS_TASK_QUEUE_ENABLED=true uv run python -m server.workers.video_worker
+# Requires REDIS_URL in .env. Without it, video jobs run in daemon threads.
+```
+
 ### Development
 ```bash
 uv run pytest                                    # All tests
@@ -55,9 +61,10 @@ cd web && pnpm run build   # Production build → server/static/
 
 **Key backend patterns:**
 - TTS uses MiMo API (`api.xiaomimimo.com`). LLM uses MiMo Token Plan (`token-plan-cn.xiaomimimo.com/anthropic`).
-- Video jobs run in background daemon threads (`video_job.py`), polled via REST (not WebSocket).
+- Video jobs run in background daemon threads (`video_job.py`), with SSE progress via `GET /api/video/jobs/<id>/stream`. Redis Pub/Sub used when available, in-memory queues as fallback.
 - Video templates are JSON configs stored in DB, seeded as built-in on startup (`video_template.py`).
 - `deep-translator` (Google Translate) used for bilingual subtitle translation in `routes/texts.py`.
+- **Redis (optional):** Caching, SSE pub/sub, distributed TTS locks, rate limiting, task queue. All features degrade gracefully when `REDIS_URL` is not set. Config via `REDIS_URL`, `REDIS_KEY_PREFIX`, `REDIS_TASK_QUEUE_ENABLED`.
 
 ### Pluggable Model Provider System (`server/services/`)
 - `model_provider_base.py` — Abstract `ModelProvider` base class with capability enum
@@ -118,11 +125,12 @@ Abstraction layer separating TTS provider logic from route code:
 
 ## Key Dependencies
 
-**Python:** Flask, Flask-SQLAlchemy, Flask-CORS, requests, deep-translator, moviepy, pymysql, python-dotenv
+**Python:** Flask, Flask-SQLAlchemy, Flask-CORS, requests, deep-translator, moviepy, pymysql, python-dotenv, redis
 **Frontend:** Vue 3, Vite, Pinia, Vue Router, Ant Design Vue, axios
 
 ## Environment
 
 - Python 3.13 required (`.python-version`). Use `uv run` for all Python commands.
 - `.env` is gitignored. Create it for MySQL voice profile features; not needed for core SRT/CLI.
+- Optional Redis: set `REDIS_URL` in `.env` for caching, SSE, distributed locks, rate limiting, and task queue.
 - No lint, typecheck, or CI config exists — run `uv run pytest` before finishing.

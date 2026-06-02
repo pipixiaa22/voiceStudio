@@ -1,4 +1,5 @@
 import json
+import queue
 import uuid
 import threading
 import traceback
@@ -7,6 +8,93 @@ import tempfile
 import base64
 from server.models import db, VideoJob
 from server.services.voice_workflow_audio import build_voice_track_from_workflow
+
+# SSE pub/sub: in-memory fallback when Redis is unavailable
+_sse_subscribers: dict[str, list[queue.Queue]] = {}
+_sse_lock = threading.Lock()
+
+
+def _sse_broadcast(job_id: str, event: str, data: dict):
+    """Push an SSE event via Redis Pub/Sub (preferred) or in-memory queues (fallback)."""
+    from server.services.redis_client import get_redis, redis_key
+    r = get_redis()
+    payload = f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+    if r is not None:
+        try:
+            r.publish(redis_key('video', 'job', job_id, 'events'), payload)
+            # Also cache latest job state for quick reconnect
+            r.set(redis_key('video', 'job', job_id), json.dumps(data, ensure_ascii=False), ex=86400 * 7)
+        except Exception:
+            pass
+    else:
+        with _sse_lock:
+            subscribers = list(_sse_subscribers.get(job_id, []))
+        for q in subscribers:
+            try:
+                q.put_nowait(payload)
+            except queue.Full:
+                pass
+
+
+def subscribe_sse(job_id: str):
+    """Subscribe to SSE events for a job.
+
+    Returns (mode, handle) where mode is 'redis' or 'memory'.
+    For Redis mode, handle is a redis.client.PubSub.
+    For memory mode, handle is a queue.Queue.
+    """
+    from server.services.redis_client import get_redis, redis_key
+    r = get_redis()
+    if r is not None:
+        try:
+            ps = r.pubsub()
+            ps.subscribe(redis_key('video', 'job', job_id, 'events'))
+            return 'redis', ps
+        except Exception:
+            pass
+    # Fallback to in-memory
+    q = queue.Queue(maxsize=64)
+    with _sse_lock:
+        _sse_subscribers.setdefault(job_id, []).append(q)
+    return 'memory', q
+
+
+def unsubscribe_sse(job_id: str, handle, mode: str = 'memory'):
+    """Unsubscribe from SSE events."""
+    if mode == 'redis':
+        try:
+            handle.unsubscribe()
+            handle.close()
+        except Exception:
+            pass
+    else:
+        with _sse_lock:
+            subs = _sse_subscribers.get(job_id, [])
+            if handle in subs:
+                subs.remove(handle)
+            if not subs:
+                _sse_subscribers.pop(job_id, None)
+
+
+def get_job_snapshot(job_id: str) -> dict | None:
+    """Get job state from Redis cache (fast path) or DB."""
+    from server.services.redis_client import get_redis, redis_key, cache_get_json
+    r = get_redis()
+    if r is not None:
+        cached = cache_get_json(redis_key('video', 'job', job_id))
+        if cached:
+            return cached
+    job = get_job(job_id)
+    if job:
+        data = job.to_dict()
+        # Backfill Redis
+        if r is not None:
+            try:
+                r.set(redis_key('video', 'job', job_id), json.dumps(data, ensure_ascii=False), ex=86400 * 7)
+            except Exception:
+                pass
+        return data
+    return None
 
 
 def create_job(title: str, request: dict) -> VideoJob:
@@ -34,6 +122,7 @@ def update_job_progress(job_id: str, progress: float, stage: str, message: str =
     job.stage = stage
     job.message = message
     db.session.commit()
+    _sse_broadcast(job_id, 'progress', job.to_dict())
 
 
 def update_job_completed(job_id: str, output_path: str, manifest_json: str = '{}', video_path: str = ''):
@@ -47,6 +136,7 @@ def update_job_completed(job_id: str, output_path: str, manifest_json: str = '{}
     job.video_path = video_path
     job.message = '视频生成完成'
     db.session.commit()
+    _sse_broadcast(job_id, 'completed', job.to_dict())
 
 
 def update_job_failed(job_id: str, error_message: str):
@@ -57,6 +147,7 @@ def update_job_failed(job_id: str, error_message: str):
     job.error_message = error_message
     job.message = f'生成失败: {error_message}'
     db.session.commit()
+    _sse_broadcast(job_id, 'failed', job.to_dict())
 
 
 def list_jobs(limit: int = 20) -> list[VideoJob]:
@@ -90,7 +181,21 @@ def _audio_voice_from_profile(profile: dict | None):
 
 
 def start_job_processing(job_id: str, app):
-    """Start background processing of a video job."""
+    """Start background processing of a video job.
+
+    If REDIS_TASK_QUEUE_ENABLED=true and Redis is available, pushes to Redis List
+    for a separate worker to consume. Otherwise falls back to daemon thread.
+    """
+    from server.services.redis_client import get_redis, redis_key
+    if os.environ.get('REDIS_TASK_QUEUE_ENABLED', 'false').lower() == 'true':
+        r = get_redis()
+        if r is not None:
+            try:
+                r.lpush(redis_key('queue', 'video_jobs'), job_id)
+                return
+            except Exception:
+                pass
+    # Fallback: daemon thread
     thread = threading.Thread(target=_process_job, args=(job_id, app), daemon=True)
     thread.start()
 

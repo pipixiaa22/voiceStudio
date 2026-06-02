@@ -11,6 +11,7 @@ from flask import Blueprint, request, jsonify, send_file
 from server.services import voice_profile_repository as repo
 from server.services.tts_provider import TTSProvider
 from server.services.voice_prompt import build_voice_prompt
+from server.services.redis_client import rate_limit
 
 tts_bp = Blueprint('tts', __name__)
 
@@ -124,6 +125,7 @@ def _concat_wavs(wav_infos, gap):
 
 
 @tts_bp.route('/api/tts/synthesize', methods=['POST'])
+@rate_limit('tts', 20, 60)
 def synthesize():
     data = request.get_json()
     if not data:
@@ -163,6 +165,7 @@ def synthesize():
 
 
 @tts_bp.route('/api/tts/batch-synthesize', methods=['POST'])
+@rate_limit('tts-batch', 3, 60)
 def batch_synthesize():
     data = request.get_json()
     if not data:

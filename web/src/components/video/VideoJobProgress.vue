@@ -66,7 +66,7 @@ const emit = defineEmits(['done', 'retry'])
 
 const job = ref(null)
 const videoPlayer = ref(null)
-let pollTimer = null
+let eventSource = null
 
 const handleDownloadVideo = () => {
   if (!props.jobId) return
@@ -117,36 +117,58 @@ const progressStatus = computed(() => {
   return 'active'
 })
 
-const pollJob = async () => {
+const closeSse = () => {
+  if (eventSource) {
+    eventSource.close()
+    eventSource = null
+  }
+}
+
+const connectSse = () => {
   if (!props.jobId) return
+  closeSse()
 
-  try {
-    const response = await videoApi.getJob(props.jobId)
-    job.value = response.data
+  eventSource = new EventSource(`/api/video/jobs/${props.jobId}/stream`)
 
-    if (job.value.status === 'completed' || job.value.status === 'failed') {
-      clearInterval(pollTimer)
+  eventSource.addEventListener('progress', (e) => {
+    job.value = JSON.parse(e.data)
+  })
+
+  eventSource.addEventListener('completed', (e) => {
+    job.value = JSON.parse(e.data)
+    closeSse()
+  })
+
+  eventSource.addEventListener('failed', (e) => {
+    job.value = JSON.parse(e.data)
+    closeSse()
+  })
+
+  eventSource.onerror = () => {
+    closeSse()
+    // Fallback: single fetch to get current state
+    if (props.jobId) {
+      videoApi.getJob(props.jobId).then(r => {
+        job.value = r.data
+        if (job.value.status !== 'completed' && job.value.status !== 'failed') {
+          // Reconnect after a brief delay
+          setTimeout(connectSse, 2000)
+        }
+      }).catch(() => {})
     }
-  } catch (error) {
-    console.error('查询任务状态失败:', error)
   }
 }
 
 onMounted(() => {
-  pollJob()
-  pollTimer = setInterval(pollJob, 2000)
+  connectSse()
 })
 
 onUnmounted(() => {
-  if (pollTimer) {
-    clearInterval(pollTimer)
-  }
+  closeSse()
 })
 
 watch(() => props.jobId, () => {
-  if (pollTimer) clearInterval(pollTimer)
-  pollJob()
-  pollTimer = setInterval(pollJob, 2000)
+  connectSse()
 })
 </script>
 

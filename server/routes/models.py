@@ -3,6 +3,7 @@ import uuid
 from flask import Blueprint, request, jsonify
 from server.services.model_registry import ModelRegistry
 from server.models import db, CustomProvider
+from server.services.redis_client import rate_limit
 
 models_bp = Blueprint('models', __name__)
 registry = ModelRegistry()
@@ -48,6 +49,7 @@ def get_all_models():
 
 
 @models_bp.route('/api/model-providers/test', methods=['POST'])
+@rate_limit('provider-test', 10, 60)
 def test_connection():
     data = request.get_json()
     if not data:
@@ -81,6 +83,7 @@ def test_connection():
 
 
 @models_bp.route('/api/models/llm/complete', methods=['POST'])
+@rate_limit('llm', 10, 60)
 def llm_complete():
     data = request.get_json()
     if not data:
@@ -114,6 +117,7 @@ def llm_complete():
 
 
 @models_bp.route('/api/models/tts/synthesize', methods=['POST'])
+@rate_limit('tts', 20, 60)
 def tts_synthesize():
     data = request.get_json()
     if not data:

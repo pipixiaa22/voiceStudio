@@ -179,12 +179,22 @@ def generate_bilingual_srt_preview():
 
     segments = split_text(content, max_chars=max_chars)
 
+    from server.services.redis_client import redis_key, cache_get_json, cache_set_json
+    import hashlib
+
     translator = GoogleTranslator(source='zh-CN', target='en')
     translations = []
     for seg in segments:
         try:
-            translated = translator.translate(seg)
-            translations.append(translated or '')
+            cache_k = redis_key('translate', 'zh-CN', 'en', hashlib.sha256(seg.encode()).hexdigest()[:16])
+            cached = cache_get_json(cache_k)
+            if cached is not None:
+                translations.append(cached)
+            else:
+                translated = translator.translate(seg) or ''
+                translations.append(translated)
+                if translated:
+                    cache_set_json(cache_k, translated, ttl=86400 * 30)
         except Exception:
             translations.append('')
 

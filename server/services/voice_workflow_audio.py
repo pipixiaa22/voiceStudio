@@ -1,4 +1,5 @@
 import base64
+import time as _time
 from pathlib import Path
 
 from server.models import db
@@ -55,6 +56,8 @@ def synthesize_or_cache_segment(
     reuse_cache=True,
     persist_cache=True,
 ):
+    from server.services.redis_client import get_redis, redis_key, acquire_lock, release_lock
+
     profile_id = segment.voice_profile_id or workflow.default_voice_profile_id
     profile = repo.get_profile_by_id(int(profile_id)) if profile_id else None
     model = (profile or {}).get('model') or 'mimo-v2.5-tts-voicedesign'
@@ -82,35 +85,65 @@ def synthesize_or_cache_segment(
             'segment_dict': segment_dict,
         }
 
-    result = synthesize_emotion_segment(
-        api_key,
-        segment_dict,
-        voice_profile=profile,
-        fallback_voice_description=data.get('voice_description', ''),
-        style_tags=(profile or {}).get('style_tags'),
-        model=model,
-        voice=profile_audio_voice(profile),
-    )
-    audio_bytes = result['audio_bytes']
-    info = result['wav_info']
-    duration = result['duration']
+    # Try to acquire a distributed lock to prevent duplicate TTS calls.
+    # Skip lock/wait logic when persist_cache=False (audition path) since no
+    # file is written, so waiting for cache_path to appear would always time out.
+    r = get_redis() if persist_cache else None
+    lock_key = redis_key('tts', 'fingerprint', expected_fingerprint, 'lock')
+    lock_token = acquire_lock(lock_key, ttl=120) if r else None
 
-    if persist_cache:
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        cache_path.write_bytes(audio_bytes)
-        segment.audio_path = str(cache_path)
-        segment.audio_fingerprint = expected_fingerprint
-        segment.audio_status = 'ready'
+    if r and lock_token is None:
+        # Redis available but lock held by another request; wait and retry cache
+        for _ in range(30):
+            _time.sleep(1)
+            if cache_path.exists():
+                audio_bytes = cache_path.read_bytes()
+                info = read_wav_info(audio_bytes)
+                duration = info['frames'] / info['framerate']
+                return {
+                    'audio_base64': base64.b64encode(audio_bytes).decode('ascii'),
+                    'audio_bytes': audio_bytes,
+                    'wav_info': info,
+                    'duration': duration,
+                    'fingerprint': expected_fingerprint,
+                    'cached': True,
+                    'segment_dict': segment_dict,
+                }
+        # Timed out waiting; proceed with synthesis anyway
 
-    return {
-        'audio_base64': result['audio_base64'],
-        'audio_bytes': audio_bytes,
-        'wav_info': info,
-        'duration': duration,
-        'fingerprint': expected_fingerprint,
-        'cached': False,
-        'segment_dict': segment_dict,
-    }
+    try:
+        result = synthesize_emotion_segment(
+            api_key,
+            segment_dict,
+            voice_profile=profile,
+            fallback_voice_description=data.get('voice_description', ''),
+            style_tags=(profile or {}).get('style_tags'),
+            model=model,
+            voice=profile_audio_voice(profile),
+        )
+        audio_bytes = result['audio_bytes']
+        info = result['wav_info']
+        duration = result['duration']
+
+        if persist_cache:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_bytes(audio_bytes)
+            segment.audio_path = str(cache_path)
+            segment.audio_fingerprint = expected_fingerprint
+            segment.audio_status = 'ready'
+
+        return {
+            'audio_base64': result['audio_base64'],
+            'audio_bytes': audio_bytes,
+            'wav_info': info,
+            'duration': duration,
+            'fingerprint': expected_fingerprint,
+            'cached': False,
+            'segment_dict': segment_dict,
+        }
+    finally:
+        if lock_token:
+            release_lock(lock_key, lock_token)
 
 
 def cache_status_for_segment(workflow, segment):

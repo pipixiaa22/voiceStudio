@@ -1,3 +1,4 @@
+import hashlib
 import re
 import requests
 from server.services.discovery.base import DiscoveryConnector
@@ -89,25 +90,36 @@ class ManualUrlConnector(DiscoveryConnector):
         raise NotImplementedError('手动链接不支持关键词搜索')
 
     def resolve_url(self, url: str) -> dict:
+        from server.services.redis_client import redis_key, cache_get_json, cache_set_json
+
+        # Check cache
+        url_hash = hashlib.sha256(url.encode()).hexdigest()[:16]
+        cache_k = redis_key('discovery', 'url', url_hash)
+        cached = cache_get_json(cache_k)
+        if cached is not None:
+            return cached
+
         platform, source_id = _detect_platform(url)
 
         if not platform:
-            return {
+            result = {
                 'platform_key': 'manual',
                 'source_url': url,
                 'source_id': None,
             }
-
-        item = {
-            'platform_key': platform,
-            'source_url': url,
-            'source_id': source_id,
-        }
-
-        if platform == 'youtube':
-            meta = _fetch_youtube_oembed(source_id)
         else:
-            meta = _fetch_page_meta(url)
+            result = {
+                'platform_key': platform,
+                'source_url': url,
+                'source_id': source_id,
+            }
 
-        item.update({k: v for k, v in meta.items() if v})
-        return item
+            if platform == 'youtube':
+                meta = _fetch_youtube_oembed(source_id)
+            else:
+                meta = _fetch_page_meta(url)
+
+            result.update({k: v for k, v in meta.items() if v})
+
+        cache_set_json(cache_k, result, ttl=86400 * 7)  # 7 days
+        return result

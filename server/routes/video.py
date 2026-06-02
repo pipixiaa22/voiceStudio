@@ -1,8 +1,9 @@
+import json
 import os
 import re
 import tempfile
 import wave
-from flask import Blueprint, request, jsonify, send_file
+from flask import Blueprint, request, jsonify, send_file, Response
 
 video_bp = Blueprint('video', __name__)
 
@@ -216,7 +217,11 @@ def generate():
 
 
 from server.services.video_template import get_all_templates, get_template_by_key
-from server.services.video_job import create_job, get_job, list_jobs, start_job_processing
+from server.services.video_job import (
+    create_job, get_job, list_jobs, start_job_processing,
+    subscribe_sse, unsubscribe_sse, get_job_snapshot,
+)
+from server.services.redis_client import rate_limit, redis_key, idempotency_check, idempotency_set
 
 
 @video_bp.route('/api/video/templates', methods=['GET'])
@@ -234,10 +239,22 @@ def get_template(template_key):
 
 
 @video_bp.route('/api/video/jobs', methods=['POST'])
+@rate_limit('video-jobs', 3, 300)
 def create_video_job():
+    import hashlib
     data = request.get_json()
     if not data:
         return jsonify({'error': '请求数据不能为空'}), 400
+
+    # Idempotency: same request hash within 10 min returns existing job (only if still running)
+    _RUNNING_STATES = frozenset({'queued', 'planning', 'synthesizing_voice', 'mixing_audio', 'rendering_video', 'packaging'})
+    req_hash = hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()[:16]
+    idem_key = redis_key('idempotency', 'video', req_hash)
+    existing_job_id = idempotency_check(idem_key)
+    if existing_job_id:
+        existing = get_job(existing_job_id)
+        if existing and existing.status in _RUNNING_STATES:
+            return jsonify({'job_id': existing.job_id, 'status': existing.status, 'idempotent': True}), 202
 
     title = data.get('title', '未命名')
     template_key = data.get('template_key', 'xianxia_narration')
@@ -281,6 +298,9 @@ def create_video_job():
 
     job = create_job(title=title, request=data)
 
+    # Store idempotency key
+    idempotency_set(idem_key, job.job_id, ttl=600)
+
     # Start background processing
     from flask import current_app
     start_job_processing(job.job_id, current_app._get_current_object())
@@ -297,6 +317,44 @@ def get_video_job(job_id):
     if not job:
         return jsonify({'error': '任务不存在'}), 404
     return jsonify(job.to_dict())
+
+
+@video_bp.route('/api/video/jobs/<job_id>/stream')
+def stream_video_job(job_id):
+    """SSE endpoint: streams job progress events to the client."""
+    snapshot = get_job_snapshot(job_id)
+    if not snapshot:
+        return jsonify({'error': '任务不存在'}), 404
+
+    mode, handle = subscribe_sse(job_id)
+
+    def generate():
+        try:
+            # Send current state immediately (from Redis cache or DB)
+            yield f"event: progress\ndata: {json.dumps(snapshot, ensure_ascii=False)}\n\n"
+
+            if mode == 'redis':
+                # Redis Pub/Sub mode
+                while True:
+                    msg = handle.get_message(timeout=30)
+                    if msg and msg['type'] == 'message':
+                        yield msg['data'].decode('utf-8') if isinstance(msg['data'], bytes) else msg['data']
+                    else:
+                        yield ": heartbeat\n\n"
+            else:
+                # In-memory queue fallback
+                while True:
+                    try:
+                        yield handle.get(timeout=30)
+                    except Exception:
+                        yield ": heartbeat\n\n"
+        except GeneratorExit:
+            pass
+        finally:
+            unsubscribe_sse(job_id, handle, mode)
+
+    return Response(generate(), mimetype='text/event-stream',
+                    headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
 
 
 @video_bp.route('/api/video/jobs', methods=['GET'])

@@ -1,3 +1,4 @@
+import hashlib
 import json
 from server.services.model_registry import ModelRegistry
 
@@ -74,8 +75,10 @@ def _try_fix_truncated_json(text: str) -> dict:
     raise ValueError(f'LLM 返回的内容无法解析为 JSON: {text[:200]}')
 
 
-def analyze_item(item: dict, score_result: dict, api_key: str = '') -> dict:
+def analyze_item(item: dict, score_result: dict, api_key: str = '', force_refresh: bool = False) -> dict:
     """调用 LLM 分析视频并生成原创脚本"""
+    from server.services.redis_client import redis_key, cache_get_json, cache_set_json
+
     registry = ModelRegistry()
 
     if api_key:
@@ -85,6 +88,30 @@ def analyze_item(item: dict, score_result: dict, api_key: str = '') -> dict:
 
     if not api_key:
         raise ValueError('LLM API key 未配置。请在模型设置中配置 API key。')
+
+    # Check LLM analysis cache — key must cover every input that affects the prompt
+    stats = item.get('stats') or {}
+    tags = item.get('tags') or []
+    reasons = score_result.get('reasons') or []
+    cache_input = json.dumps({
+        'title': item.get('title'),
+        'platform_key': item.get('platform_key'),
+        'source_id': item.get('source_id'),
+        'duration': item.get('duration'),
+        'views': stats.get('views'), 'likes': stats.get('likes'), 'comments': stats.get('comments'),
+        'tags': tags,
+        'reasons': reasons,
+        'prompt_version': 'v1',
+        'provider_key': provider_key,
+        'model': model,
+        'base_url': base_url,
+    }, sort_keys=True)
+    item_hash = hashlib.sha256(cache_input.encode()).hexdigest()[:16]
+    cache_k = redis_key('llm', 'analysis', item_hash)
+    if not force_refresh:
+        cached = cache_get_json(cache_k)
+        if cached is not None:
+            return cached
 
     provider = registry.create_provider(
         provider_key, api_key=api_key, base_url=base_url,
@@ -135,6 +162,5 @@ def analyze_item(item: dict, score_result: dict, api_key: str = '') -> dict:
     if not isinstance(result, dict):
         raise ValueError(f'LLM 返回的内容无法解析为 JSON: {result_text[:200]}')
 
-    return result
-
+    cache_set_json(cache_k, result, ttl=86400 * 7)  # 7 days
     return result

@@ -1,3 +1,5 @@
+import hashlib
+import json as _json
 import re
 import requests
 from datetime import datetime, timezone, timedelta
@@ -48,9 +50,18 @@ class YoutubeConnector(DiscoveryConnector):
         return bool(self._get_api_key())
 
     def search(self, query, limit=20, filters=None):
+        from server.services.redis_client import redis_key, cache_get_json, cache_set_json
+
         api_key = self._get_api_key()
         if not api_key:
             raise ValueError('YouTube API key 未配置')
+
+        # Check cache
+        filter_hash = hashlib.sha256(_json.dumps(filters or {}, sort_keys=True).encode()).hexdigest()[:8]
+        cache_k = redis_key('discovery', 'search', 'youtube', hashlib.sha256(f'{query}:{limit}:{filter_hash}'.encode()).hexdigest()[:16])
+        cached = cache_get_json(cache_k)
+        if cached is not None:
+            return cached
 
         params = {
             'part': 'snippet',
@@ -107,14 +118,24 @@ class YoutubeConnector(DiscoveryConnector):
                 'tags': snippet.get('tags', []),
             })
 
+        cache_set_json(cache_k, results, ttl=1800)  # 30 min
         return results
 
     def resolve_url(self, url: str) -> dict:
+        from server.services.redis_client import redis_key, cache_get_json, cache_set_json
+
         match = re.search(r'(?:youtube\.com/watch\?v=|youtu\.be/)([\w-]+)', url)
         if not match:
             raise ValueError(f'无效的 YouTube URL: {url}')
 
         video_id = match.group(1)
+
+        # Check cache
+        cache_k = redis_key('discovery', 'video', 'youtube', video_id)
+        cached = cache_get_json(cache_k)
+        if cached is not None:
+            return cached
+
         api_key = self._get_api_key()
         if not api_key:
             raise ValueError('YouTube API key 未配置')
@@ -128,7 +149,7 @@ class YoutubeConnector(DiscoveryConnector):
         stats = detail.get('statistics', {})
         content = detail.get('contentDetails', {})
 
-        return {
+        result = {
             'platform_key': 'youtube',
             'source_url': url,
             'source_id': video_id,
@@ -144,6 +165,9 @@ class YoutubeConnector(DiscoveryConnector):
             },
             'tags': snippet.get('tags', []),
         }
+
+        cache_set_json(cache_k, result, ttl=86400)  # 1 day
+        return result
 
     def _fetch_video_details(self, video_ids: list[str], api_key: str) -> list[dict]:
         resp = requests.get(YOUTUBE_VIDEOS_URL, params={

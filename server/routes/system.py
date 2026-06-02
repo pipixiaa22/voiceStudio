@@ -4,6 +4,31 @@ from flask import Blueprint, request, jsonify
 
 system_bp = Blueprint('system', __name__)
 
+
+@system_bp.route('/api/system/health', methods=['GET'])
+def health_check():
+    from server.services.redis_client import get_redis
+    r = get_redis()
+    redis_ok = False
+    redis_latency_ms = None
+    if r is not None:
+        try:
+            import time
+            t0 = time.monotonic()
+            r.ping()
+            redis_latency_ms = round((time.monotonic() - t0) * 1000, 1)
+            redis_ok = True
+        except Exception:
+            pass
+    return jsonify({
+        'status': 'ok',
+        'redis': {
+            'connected': redis_ok,
+            'latency_ms': redis_latency_ms,
+            'configured': bool(os.environ.get('REDIS_URL')),
+        },
+    })
+
 DEFAULT_JIANYING_DIR = os.path.expanduser(
     '~/Movies/JianyingPro/User Data/Projects/com.lveditor.draft'
 )
