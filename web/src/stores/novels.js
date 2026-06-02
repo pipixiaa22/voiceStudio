@@ -341,12 +341,9 @@ export const useNovelsStore = defineStore('novels', {
     },
 
     async loadEventGraph(pid) {
-      const [evRes, erRes] = await Promise.all([
-        novelsApi.getEventGraph(pid),
-        novelsApi.listEvents(pid),
-      ])
+      const evRes = await novelsApi.getEventGraph(pid)
       this.events = evRes.data.nodes || evRes.data
-      this.eventRelations = erRes.data
+      this.eventRelations = evRes.data.edges || []
     },
 
     async saveGraphLayout(pid, entityPositions, eventPositions) {

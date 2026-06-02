@@ -31,7 +31,7 @@
       </div>
 
       <!-- Write mode -->
-      <template v-if="store.activeMode === 'write'">
+      <div v-if="store.activeMode === 'write'" class="workspace-main">
         <div class="workspace-left">
           <NovelOutlinePanel />
         </div>
@@ -54,10 +54,10 @@
             </a-tab-pane>
           </a-tabs>
         </div>
-      </template>
+      </div>
 
       <!-- Graph mode -->
-      <template v-else-if="store.activeMode === 'graph'">
+      <div v-else-if="store.activeMode === 'graph'" class="workspace-main">
         <div class="workspace-graph">
           <NovelCharacterGraph v-if="store.graphType === 'characters'" />
           <NovelEventGraph v-else />
@@ -70,10 +70,10 @@
             <p>点击图谱节点查看属性</p>
           </div>
         </div>
-      </template>
+      </div>
 
       <!-- Review mode -->
-      <template v-else>
+      <div v-else class="workspace-main">
         <div class="workspace-left">
           <NovelOutlinePanel />
         </div>
@@ -83,7 +83,7 @@
         <div class="workspace-right">
           <NovelReviewPanel />
         </div>
-      </template>
+      </div>
 
       <!-- Bottom status bar -->
       <div class="workspace-bottom">
@@ -210,6 +210,11 @@ watch(() => store.currentChapter?.content_markdown, () => {
   display: flex;
   flex-direction: column;
   height: 100%;
+}
+.workspace-main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
 }
 .workspace-top {
   display: flex;
