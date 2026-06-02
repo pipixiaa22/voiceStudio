@@ -51,6 +51,8 @@ def create_app(test_config=None):
         app.register_blueprint(voice_workflows_bp)
         from server.routes.system import system_bp
         app.register_blueprint(system_bp)
+        from server.routes.novels import novels_bp
+        app.register_blueprint(novels_bp)
 
     @app.route('/')
     def index():

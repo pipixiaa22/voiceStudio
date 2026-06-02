@@ -89,3 +89,23 @@ def delete_outline_node(project_id, node_id):
     db.session.delete(node)
     db.session.commit()
     return '', 204
+
+
+@novels_bp.route('/api/novels/<int:project_id>/blueprint/generate', methods=['POST'])
+def generate_blueprint(project_id):
+    NovelProject.query.get_or_404(project_id)
+    data = request.get_json() or {}
+
+    if data.get('premise'):
+        project = NovelProject.query.get(project_id)
+        project.premise = data['premise']
+        db.session.commit()
+
+    from server.services.novel.generation_runner import start_generation
+    gen = start_generation(
+        project_id=project_id,
+        generation_type='blueprint',
+        target_id=project_id,
+        params=data,
+    )
+    return jsonify(gen.to_dict()), 202
