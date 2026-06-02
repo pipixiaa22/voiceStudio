@@ -18,6 +18,7 @@ export const useNovelsStore = defineStore('novels', {
     chapters: [],
     currentChapter: null,
     currentChapterLoading: false,
+    _lastSavedSnapshot: null,
 
     // Versions
     versions: [],
@@ -130,6 +131,7 @@ export const useNovelsStore = defineStore('novels', {
         const { data } = await novelsApi.getChapter(pid, cid)
         this.currentChapter = data
         this.versions = data.versions || []
+        this._lastSavedSnapshot = `${data.title}||${data.content_markdown}`
         this.dirty = false
       } finally {
         this.currentChapterLoading = false
@@ -144,6 +146,7 @@ export const useNovelsStore = defineStore('novels', {
         if (title !== undefined) payload.title = title
         const { data } = await novelsApi.updateChapter(pid, cid, payload)
         this.currentChapter = data
+        this._lastSavedSnapshot = `${data.title}||${data.content_markdown}`
         this.dirty = false
       } catch (e) {
         this.saveError = e.message
@@ -350,8 +353,15 @@ export const useNovelsStore = defineStore('novels', {
 
     // --- Graph Changes ---
     async acceptGraphChange(pid, gid) {
+      const change = this.graphChanges.find(c => c.id === gid)
       const { data } = await novelsApi.acceptGraphChange(pid, gid)
       this.graphChanges = this.graphChanges.filter(c => c.id !== gid)
+      // Refresh the relevant graph
+      if (change && (change.target_type === 'entity' || change.target_type === 'relation')) {
+        await this.loadCharacterGraph(pid)
+      } else if (change && (change.target_type === 'event' || change.target_type === 'event_relation')) {
+        await this.loadEventGraph(pid)
+      }
       return data
     },
 

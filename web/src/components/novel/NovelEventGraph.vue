@@ -89,7 +89,7 @@ const handleAddEvent = async () => {
 }
 
 const handleSaveLayout = async () => {
-  const positions = store.events.map(e => ({ id: e.id, x: e.node_x || 0, y: e.node_y || 0 }))
+  const positions = store.events.map(e => ({ id: e.id, x: e.x ?? e.node_x ?? 0, y: e.y ?? e.node_y ?? 0 }))
   await store.saveGraphLayout(store.currentProject.id, [], positions)
 }
 </script>

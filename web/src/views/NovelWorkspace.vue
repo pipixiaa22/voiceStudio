@@ -188,12 +188,16 @@ const handleExtract = async () => {
   await store.startGeneration('extract', {})
 }
 
-// Watch for chapter content changes to mark dirty (skip during chapter load)
-watch(() => store.currentChapter?.content_markdown, () => {
-  if (!store.currentChapterLoading) {
-    store.dirty = true
-  }
-})
+// Watch for chapter content changes to mark dirty (compare against last saved snapshot)
+watch(
+  () => [store.currentChapter?.title, store.currentChapter?.content_markdown],
+  ([title, content]) => {
+    const snapshot = `${title}||${content}`
+    if (snapshot !== store._lastSavedSnapshot) {
+      store.dirty = true
+    }
+  },
+)
 </script>
 
 <style scoped>
