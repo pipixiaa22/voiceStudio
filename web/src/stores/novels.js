@@ -145,7 +145,12 @@ export const useNovelsStore = defineStore('novels', {
       this._autoSaveTimer = setTimeout(async () => {
         // Only save if still on the same chapter and still dirty
         if (this._autoSaveChapterId === cid && this.currentChapter?.id === cid) {
-          await this.saveChapter(pid, cid, content, title)
+          try {
+            await this.saveChapter(pid, cid, content, title)
+          } catch {
+            // saveChapter already sets saveError; keep dirty so status bar reflects unsaved state
+            this.dirty = true
+          }
         }
       }, 2000)
     },
@@ -247,6 +252,10 @@ export const useNovelsStore = defineStore('novels', {
 
     // --- Generation ---
     async startGeneration(type, params) {
+      // Save dirty content before chapter-based generation tasks
+      if (type !== 'blueprint') {
+        await this.saveIfDirty()
+      }
       this.generation = { status: 'pending', progress: 0 }
       this.rightTab = 'generation'
 
