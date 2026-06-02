@@ -106,6 +106,18 @@ def confirm_chapter(project_id, chapter_id):
         generate_summary(chapter_id)
     except Exception:
         pass  # Summary generation failure should not block confirmation
+    # Trigger memory extraction in background
+    if chapter.content_markdown:
+        try:
+            from server.services.memory.memory_writer import extract_and_create_changes
+            import threading
+            threading.Thread(
+                target=extract_and_create_changes,
+                args=(project_id, chapter_id, chapter.content_markdown),
+                daemon=True,
+            ).start()
+        except Exception:
+            pass
     return jsonify(chapter.to_dict())
 
 

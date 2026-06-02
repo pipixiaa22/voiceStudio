@@ -74,3 +74,116 @@ def create_and_index(project_id, content, memory_type, **kwargs):
     memory = create_memory(project_id, content, memory_type, **kwargs)
     index_memory(memory)
     return memory
+
+
+def extract_and_create_changes(project_id, chapter_id, chapter_content):
+    """Extract memories from a chapter and create pending change records.
+
+    Called after chapter confirmation. Uses LLM to identify new facts.
+
+    Returns:
+        List of created NovelMemoryChange instances.
+    """
+    from server.models.novel.memory import NovelMemoryChange
+    from server.services.novel.prompt_templates import build_memory_extract_prompt
+    from server.services.novel import get_llm_provider
+    from server.services.novel.context_builder import build_context
+    from server.models.novel.chapter import NovelChapter
+
+    chapter = NovelChapter.query.get(chapter_id)
+    context = build_context(project_id, chapter_id) if chapter else {}
+
+    prompt = build_memory_extract_prompt(chapter_content, context)
+
+    provider, default_model = get_llm_provider()
+    messages = [{'role': 'user', 'content': prompt}]
+
+    try:
+        response = provider.complete(
+            messages,
+            model=default_model,
+            system_prompt='你是小说记忆管理助手，只输出 JSON。',
+            max_tokens=4096,
+            timeout=60,
+        )
+    except Exception:
+        return []
+
+    # Parse response
+    result = _parse_memory_json(response)
+    if not result:
+        return []
+
+    changes = []
+
+    # Create "add" changes for new memories
+    for item in result.get('new_memories', []):
+        if not item.get('content'):
+            continue
+        change = NovelMemoryChange(
+            project_id=project_id,
+            change_type='add',
+            after={
+                'title': item.get('title', ''),
+                'content': item['content'],
+                'memory_type': item.get('memory_type', 'summary'),
+                'importance': item.get('importance', 3),
+                'summary': item.get('summary', ''),
+                'source_type': 'ai_extract',
+                'source_id': chapter_id,
+            },
+            source='ai_extract',
+            status='pending',
+        )
+        db.session.add(change)
+        changes.append(change)
+
+    # Create "modify" changes for updates
+    for item in result.get('updates', []):
+        change = NovelMemoryChange(
+            project_id=project_id,
+            change_type='modify',
+            after={
+                'title': item.get('existing_title', ''),
+                'content': item.get('new_content', ''),
+                'memory_type': item.get('memory_type', 'summary'),
+            },
+            source='ai_extract',
+            status='pending',
+        )
+        db.session.add(change)
+        changes.append(change)
+
+    db.session.commit()
+    return changes
+
+
+def _parse_memory_json(text):
+    """Parse JSON from LLM response, handling markdown code blocks."""
+    import json
+    import re
+
+    # Try markdown code block
+    match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(1))
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    # Try raw JSON
+    try:
+        return json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # Try brace-delimited
+    start = text.find('{')
+    end = text.rfind('}')
+    if start != -1 and end != -1:
+        try:
+            return json.loads(text[start:end + 1])
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    return None

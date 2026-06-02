@@ -188,3 +188,47 @@ def build_review_prompt(chapter_content, context):
 {chapter_content}""")
 
     return '\n\n'.join(parts)
+
+
+def build_memory_extract_prompt(chapter_content, context=None):
+    """Build prompt for extracting memories from a confirmed chapter."""
+    context_section = ''
+    if context:
+        if context.get('characters'):
+            context_section += f'\n【已有设定】\n{context["characters"][:1000]}'
+
+    return f"""你是一个小说长期记忆管理助手。请从以下章节中提取需要记住的新事实和变更。
+
+{context_section}
+
+【章节内容】
+{chapter_content[:6000]}
+
+请以 JSON 格式输出，包含以下字段：
+{{
+  "new_memories": [
+    {{
+      "title": "记忆标题",
+      "content": "详细内容",
+      "memory_type": "character|world_rule|event|foreshadowing|relationship|style|summary",
+      "importance": 1-5,
+      "summary": "一句话摘要"
+    }}
+  ],
+  "updates": [
+    {{
+      "existing_title": "已有设定标题",
+      "new_content": "更新后的内容",
+      "memory_type": "character|world_rule|event|foreshadowing|relationship|style|summary",
+      "reason": "更新原因"
+    }}
+  ],
+  "conflicts": [
+    {{
+      "description": "冲突描述",
+      "severity": "high|medium|low"
+    }}
+  ]
+}}
+
+只输出 JSON，不要解释。"""
