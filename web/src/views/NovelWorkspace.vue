@@ -194,9 +194,7 @@ watch(
   () => [store.currentChapter?.title, store.currentChapter?.content_markdown],
   ([title, content]) => {
     const snapshot = `${title}||${content}`
-    if (snapshot !== store._lastSavedSnapshot) {
-      store.dirty = true
-    }
+    store.dirty = snapshot !== store._lastSavedSnapshot
   },
 )
 </script>

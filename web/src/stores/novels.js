@@ -131,7 +131,20 @@ export const useNovelsStore = defineStore('novels', {
       return data
     },
 
+    async saveIfDirty() {
+      if (this.dirty && this.currentChapter) {
+        await this.saveChapter(
+          this.currentProject.id,
+          this.currentChapter.id,
+          this.currentChapter.content_markdown,
+          this.currentChapter.title,
+        )
+      }
+    },
+
     async loadChapter(pid, cid) {
+      // Save any pending changes before switching
+      await this.saveIfDirty()
       this.currentChapterLoading = true
       try {
         const { data } = await novelsApi.getChapter(pid, cid)

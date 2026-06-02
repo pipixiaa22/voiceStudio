@@ -9,7 +9,7 @@
           v-model:value="store.currentChapter.title"
           placeholder="章节标题"
           size="large"
-          @change="store.dirty = true"
+          @change="scheduleAutoSave()"
         />
       </div>
       <div class="editor-toolbar">
