@@ -113,7 +113,7 @@ def accept_graph_change(project_id, change_id):
     try:
         _apply_graph_change(change)
         change.accepted = True
-    except ValueError as e:
+    except (ValueError, KeyError, TypeError) as e:
         change.accepted = False
         db.session.commit()
         return jsonify({'error': str(e), 'change': change.to_dict()}), 400
@@ -175,6 +175,8 @@ def _apply_graph_change(change):
         elif change.target_type == 'relation':
             _validate_entity_in_project(after.get('source_entity_id'), change.project_id, '源实体')
             _validate_entity_in_project(after.get('target_entity_id'), change.project_id, '目标实体')
+            if not after.get('relation_type'):
+                raise ValueError('关系类型不能为空')
             rel = NovelRelation(
                 project_id=change.project_id,
                 source_entity_id=after['source_entity_id'],
@@ -206,6 +208,8 @@ def _apply_graph_change(change):
         elif change.target_type == 'event_relation':
             _validate_event_in_project(after.get('source_event_id'), change.project_id, '源事件')
             _validate_event_in_project(after.get('target_event_id'), change.project_id, '目标事件')
+            if not after.get('relation_type'):
+                raise ValueError('事件关系类型不能为空')
             rel = NovelEventRelation(
                 project_id=change.project_id,
                 source_event_id=after['source_event_id'],
@@ -236,9 +240,13 @@ def _apply_graph_change(change):
             rel = NovelRelation.query.get(change.target_id)
             if not rel or rel.project_id != change.project_id:
                 raise ValueError(f'关系 {change.target_id} 不属于该项目')
+            _RELATION_SAFE_FIELDS = {'relation_type', 'label', 'description', 'strength', 'status'}
             for k, v in after.items():
-                if hasattr(rel, k):
+                if k in _RELATION_SAFE_FIELDS:
                     setattr(rel, k, v)
+                elif k == 'evidence':
+                    rel.evidence = v
+                # Ignore unsafe fields (source_entity_id, target_entity_id, project_id, etc.)
 
 
 @novels_bp.route('/api/novels/<int:project_id>/chapters/<int:chapter_id>/review', methods=['POST'])
