@@ -4,7 +4,7 @@ from server.models import db
 from server.models.novel.chapter import NovelChapter, NovelChapterVersion
 from server.models.novel.project import NovelProject
 from server.services.novel.context_builder import build_context
-from server.services.novel.prompt_templates import build_chapter_system_prompt, build_chapter_user_prompt
+from server.services.novel.prompt_templates import build_chapter_system_prompt
 
 
 def generate_single_version(project_id, chapter_id, version_type='custom', user_instruction='', model_key=None):
@@ -15,26 +15,23 @@ def generate_single_version(project_id, chapter_id, version_type='custom', user_
     # Build context
     context = build_context(project_id, chapter_id, user_instruction, project.words_per_chapter)
 
-    # Build prompts
+    # Build system prompt
     system_prompt = build_chapter_system_prompt(
         project.genre,
         version_type=version_type,
         style_guide=project.style_guide,
     )
-    user_prompt = build_chapter_user_prompt(context)
 
-    # Get LLM provider
-    from server.services.novel import get_llm_provider
-    provider, default_model = get_llm_provider()
-
-    # Call LLM
-    messages = [{'role': 'user', 'content': user_prompt}]
-    content = provider.complete(
-        messages,
-        model=model_key or default_model,
+    # Generate with RAG memory
+    from server.services.memory.rag_chain import generate_with_memory
+    content = generate_with_memory(
+        project=project,
+        chapter=chapter,
+        context=context,
         system_prompt=system_prompt,
-        max_tokens=8192,
-        timeout=120,
+        user_instruction=user_instruction,
+        model_key=model_key,
+        version_type=version_type,
     )
 
     # Create version
@@ -43,10 +40,10 @@ def generate_single_version(project_id, chapter_id, version_type='custom', user_
         version_type=version_type,
         title=f'{version_type}版',
         content_markdown=content,
-        model=model_key or default_model,
+        model=model_key or 'unknown',
         accepted=False,
     )
-    version.prompt = {'system': system_prompt, 'user': user_prompt}
+    version.prompt = {'system': system_prompt, 'user': user_instruction}
     version.context_snapshot = {'context_hash': hash(json.dumps(context, sort_keys=True, default=str))}
 
     db.session.add(version)
