@@ -46,7 +46,7 @@ const flowNodes = computed(() =>
   store.events.map(e => ({
     id: String(e.id),
     type: 'event',
-    position: { x: e.node_x || 0, y: e.node_y || 0 },
+    position: { x: e.x ?? e.node_x ?? 0, y: e.y ?? e.node_y ?? 0 },
     data: { title: e.title, event_type: e.event_type, summary: e.summary },
   }))
 )
@@ -58,10 +58,10 @@ const edgeColors = {
 const flowEdges = computed(() =>
   store.eventRelations.map(r => ({
     id: String(r.id),
-    source: String(r.source_event_id),
-    target: String(r.target_event_id),
-    label: r.label || r.relation_type,
-    style: { stroke: edgeColors[r.relation_type] || '#999' },
+    source: String(r.source || r.source_event_id),
+    target: String(r.target || r.target_event_id),
+    label: r.label || r.type || r.relation_type,
+    style: { stroke: edgeColors[r.type || r.relation_type] || '#999' },
   }))
 )
 

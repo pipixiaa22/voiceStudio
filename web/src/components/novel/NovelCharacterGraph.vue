@@ -48,7 +48,7 @@ const flowNodes = computed(() =>
   store.entities.map(e => ({
     id: String(e.id),
     type: 'character',
-    position: { x: e.node_x || 0, y: e.node_y || 0 },
+    position: { x: e.x ?? e.node_x ?? 0, y: e.y ?? e.node_y ?? 0 },
     data: { name: e.name, summary: e.summary, importance: e.importance },
   }))
 )

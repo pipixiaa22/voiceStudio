@@ -157,7 +157,7 @@ const saveStatusText = computed(() => {
 const handleSave = async () => {
   if (!store.currentChapter) return
   try {
-    await store.saveChapter(store.currentProject.id, store.currentChapter.id, store.currentChapter.content_markdown)
+    await store.saveChapter(store.currentProject.id, store.currentChapter.id, store.currentChapter.content_markdown, store.currentChapter.title)
     message.success('已保存')
   } catch {
     message.error('保存失败')
@@ -188,9 +188,11 @@ const handleExtract = async () => {
   await store.startGeneration('extract', {})
 }
 
-// Watch for chapter content changes to mark dirty
+// Watch for chapter content changes to mark dirty (skip during chapter load)
 watch(() => store.currentChapter?.content_markdown, () => {
-  store.dirty = true
+  if (!store.currentChapterLoading) {
+    store.dirty = true
+  }
 })
 </script>
 

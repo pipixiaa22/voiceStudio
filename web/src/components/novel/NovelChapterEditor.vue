@@ -60,7 +60,7 @@ const handleContentChange = () => {
   clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
     if (store.dirty && store.currentChapter) {
-      store.saveChapter(store.currentProject.id, store.currentChapter.id, store.currentChapter.content_markdown)
+      store.saveChapter(store.currentProject.id, store.currentChapter.id, store.currentChapter.content_markdown, store.currentChapter.title)
     }
   }, 2000)
 }

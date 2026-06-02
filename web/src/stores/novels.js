@@ -136,11 +136,13 @@ export const useNovelsStore = defineStore('novels', {
       }
     },
 
-    async saveChapter(pid, cid, content) {
+    async saveChapter(pid, cid, content, title) {
       this.saving = true
       this.saveError = null
       try {
-        const { data } = await novelsApi.updateChapter(pid, cid, { content_markdown: content })
+        const payload = { content_markdown: content }
+        if (title !== undefined) payload.title = title
+        const { data } = await novelsApi.updateChapter(pid, cid, payload)
         this.currentChapter = data
         this.dirty = false
       } catch (e) {
@@ -210,17 +212,13 @@ export const useNovelsStore = defineStore('novels', {
         this.generation = JSON.parse(e.data)
       })
 
-      es.addEventListener('completed', async (e) => {
+      es.addEventListener('done', async (e) => {
         this.generation = JSON.parse(e.data)
         es.close()
         this.generationEventSource = null
-        await this.handleGenerationComplete()
-      })
-
-      es.addEventListener('failed', (e) => {
-        this.generation = JSON.parse(e.data)
-        es.close()
-        this.generationEventSource = null
+        if (this.generation.status === 'completed') {
+          await this.handleGenerationComplete()
+        }
       })
     },
 
