@@ -66,12 +66,30 @@ def start_generation(project_id, generation_type, target_id=None, params=None):
     # Check chapter-level lock for chapter_version and extract
     if generation_type in ('chapter_version', 'extract', 'review') and target_id:
         lock_key = redis_key('novel', 'lock', generation_type, str(target_id))
-        token = acquire_lock(lock_key, ttl=300)
-        if token is None:
-            gen.status = 'failed'
-            gen.error = '该章节正在生成中，请稍后再试'
-            db.session.commit()
-            return gen
+        r = get_redis()
+        if r is not None:
+            # Redis available — use distributed lock
+            token = acquire_lock(lock_key, ttl=300)
+            if token is None:
+                gen.status = 'failed'
+                gen.error = '该章节正在生成中，请稍后再试'
+                db.session.commit()
+                return gen
+        else:
+            # No Redis — check DB for active generations on same target
+            lock_key = None
+            token = None
+            active_same_target = NovelGeneration.query.filter(
+                NovelGeneration.target_id == target_id,
+                NovelGeneration.generation_type == generation_type,
+                NovelGeneration.status.in_(['pending', 'running']),
+                NovelGeneration.id != gen.id,
+            ).count()
+            if active_same_target > 0:
+                gen.status = 'failed'
+                gen.error = '该章节正在生成中，请稍后再试'
+                db.session.commit()
+                return gen
     else:
         lock_key = None
         token = None
