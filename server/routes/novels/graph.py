@@ -153,14 +153,16 @@ def _apply_graph_change(change):
     """Apply an accepted graph change to the actual data."""
     after = change.after
     if not after:
-        return
+        raise ValueError('变更内容不能为空')
 
     if change.change_type == 'add':
         if change.target_type == 'entity':
+            if not after.get('name', '').strip():
+                raise ValueError('实体名称不能为空')
             entity = NovelEntity(
                 project_id=change.project_id,
                 entity_type=after.get('entity_type', 'character'),
-                name=after.get('name', ''),
+                name=after['name'].strip(),
                 summary=after.get('summary'),
                 importance=after.get('importance', 5),
             )
