@@ -71,6 +71,16 @@ def update_chapter(project_id, chapter_id):
     return jsonify(chapter.to_dict())
 
 
+@novels_bp.route('/api/novels/<int:project_id>/chapters/<int:chapter_id>', methods=['DELETE'])
+def delete_chapter(project_id, chapter_id):
+    chapter = NovelChapter.query.get_or_404(chapter_id)
+    if chapter.project_id != project_id:
+        return jsonify({'error': '章节不属于该项目'}), 400
+    db.session.delete(chapter)
+    db.session.commit()
+    return '', 204
+
+
 @novels_bp.route('/api/novels/<int:project_id>/chapters/<int:chapter_id>/confirm', methods=['POST'])
 def confirm_chapter(project_id, chapter_id):
     chapter = NovelChapter.query.get_or_404(chapter_id)
