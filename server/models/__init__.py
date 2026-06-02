@@ -5,6 +5,13 @@ from server.models.video import VideoTemplate, VideoJob, VideoAsset
 from server.models.provider import CustomProvider
 from server.models.discovery import DiscoverySource, DiscoveryQuery, DiscoveryItem, DiscoveryAnalysis
 from server.models.voice_workflow import VoiceWorkflow, VoiceWorkflowSegment, VoiceWorkflowEdge
+from server.models.novel import (
+    NovelProject, NovelOutlineNode,
+    NovelChapter, NovelChapterVersion,
+    NovelEntity, NovelRelation,
+    NovelEvent, NovelEventRelation,
+    NovelGraphChange, NovelGeneration,
+)
 
 __all__ = [
     'db',
@@ -14,4 +21,9 @@ __all__ = [
     'CustomProvider',
     'DiscoverySource', 'DiscoveryQuery', 'DiscoveryItem', 'DiscoveryAnalysis',
     'VoiceWorkflow', 'VoiceWorkflowSegment', 'VoiceWorkflowEdge',
+    'NovelProject', 'NovelOutlineNode',
+    'NovelChapter', 'NovelChapterVersion',
+    'NovelEntity', 'NovelRelation',
+    'NovelEvent', 'NovelEventRelation',
+    'NovelGraphChange', 'NovelGeneration',
 ]
