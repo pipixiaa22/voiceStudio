@@ -87,10 +87,14 @@ def draft_chapter_node(state: ChapterState) -> dict:
 
 def review_draft_node(state: ChapterState) -> dict:
     """Node: Review draft for consistency."""
-    from server.services.novel.consistency_reviewer import review_chapter
+    from server.services.novel.consistency_reviewer import review_content
+
+    draft = state.get('draft', '')
+    if not draft:
+        return {'review_result': {'score': 0, 'issues': []}}
 
     try:
-        result = review_chapter(state['project_id'], state['chapter_id'])
+        result = review_content(state['project_id'], state['chapter_id'], draft)
     except Exception:
         result = {'score': 0, 'issues': []}
 

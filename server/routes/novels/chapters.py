@@ -111,11 +111,12 @@ def confirm_chapter(project_id, chapter_id):
         try:
             from server.services.memory.memory_writer import extract_and_create_changes
             import threading
-            threading.Thread(
-                target=extract_and_create_changes,
-                args=(project_id, chapter_id, chapter.content_markdown),
-                daemon=True,
-            ).start()
+            def _run_extraction():
+                from server.app import create_app
+                app = create_app()
+                with app.app_context():
+                    extract_and_create_changes(project_id, chapter_id, chapter.content_markdown)
+            threading.Thread(target=_run_extraction, daemon=True).start()
         except Exception:
             pass
     return jsonify(chapter.to_dict())
@@ -132,6 +133,23 @@ def generate_versions(project_id, chapter_id):
     gen = start_generation(
         project_id=project_id,
         generation_type='chapter_version',
+        target_id=chapter_id,
+        params=data,
+    )
+    return jsonify(gen.to_dict()), 202
+
+
+@novels_bp.route('/api/novels/<int:project_id>/chapters/<int:chapter_id>/generate-workflow', methods=['POST'])
+def generate_workflow(project_id, chapter_id):
+    chapter = NovelChapter.query.get_or_404(chapter_id)
+    if chapter.project_id != project_id:
+        return jsonify({'error': '章节不属于该项目'}), 400
+
+    data = request.get_json() or {}
+    from server.services.novel.generation_runner import start_generation
+    gen = start_generation(
+        project_id=project_id,
+        generation_type='chapter_workflow',
         target_id=chapter_id,
         params=data,
     )

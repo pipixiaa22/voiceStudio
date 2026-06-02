@@ -89,6 +89,15 @@ def update_memory(project_id, memory_id):
         memory.vector_status = 'pending'
 
     db.session.commit()
+
+    # Re-index into vector store if content changed (best effort)
+    if 'content' in data:
+        try:
+            from server.services.memory.memory_writer import index_memory
+            index_memory(memory)
+        except Exception:
+            pass
+
     return jsonify(memory.to_dict())
 
 
@@ -98,6 +107,13 @@ def delete_memory(project_id, memory_id):
     memory = NovelMemory.query.get_or_404(memory_id)
     if memory.project_id != project_id:
         return jsonify({'error': '记忆不属于该项目'}), 400
+
+    # Delete from vector store first (best effort)
+    try:
+        from server.services.memory.vector_store import delete_by_memory_id
+        delete_by_memory_id(project_id, memory_id)
+    except Exception:
+        pass
 
     db.session.delete(memory)
     db.session.commit()
@@ -110,6 +126,60 @@ def list_memory_changes(project_id):
     changes = NovelMemoryChange.query.filter_by(project_id=project_id) \
         .order_by(NovelMemoryChange.created_at.desc()).all()
     return jsonify([c.to_dict() for c in changes])
+
+
+@novels_bp.route('/api/novels/<int:project_id>/memory-changes/<int:change_id>/confirm', methods=['POST'])
+def confirm_memory_change(project_id, change_id):
+    NovelProject.query.get_or_404(project_id)
+    change = NovelMemoryChange.query.get_or_404(change_id)
+    if change.project_id != project_id:
+        return jsonify({'error': '变更不属于该项目'}), 400
+
+    from datetime import datetime, timezone
+    after = change.after
+    if not after:
+        return jsonify({'error': '变更数据为空'}), 400
+
+    if change.change_type == 'add':
+        memory = NovelMemory(
+            project_id=project_id,
+            source_type=after.get('source_type', 'ai_extract'),
+            source_id=after.get('source_id'),
+            memory_type=after.get('memory_type', 'summary'),
+            title=after.get('title'),
+            content=after.get('content', ''),
+            summary=after.get('summary'),
+            importance=after.get('importance', 3),
+            status='active',
+            vector_status='pending',
+        )
+        db.session.add(memory)
+        db.session.flush()
+        change.memory_id = memory.id
+    elif change.change_type == 'modify' and change.memory_id:
+        memory = NovelMemory.query.get(change.memory_id)
+        if memory:
+            for field in ('title', 'content', 'summary', 'importance', 'memory_type'):
+                if field in after:
+                    setattr(memory, field, after[field])
+            memory.vector_status = 'pending'
+
+    change.status = 'confirmed'
+    change.confirmed_at = datetime.now(timezone.utc)
+    db.session.commit()
+    return jsonify(change.to_dict())
+
+
+@novels_bp.route('/api/novels/<int:project_id>/memory-changes/<int:change_id>/reject', methods=['POST'])
+def reject_memory_change(project_id, change_id):
+    NovelProject.query.get_or_404(project_id)
+    change = NovelMemoryChange.query.get_or_404(change_id)
+    if change.project_id != project_id:
+        return jsonify({'error': '变更不属于该项目'}), 400
+
+    change.status = 'rejected'
+    db.session.commit()
+    return jsonify(change.to_dict())
 
 
 @novels_bp.route('/api/novels/<int:project_id>/memories/reindex', methods=['POST'])

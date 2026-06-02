@@ -57,8 +57,12 @@ def index_memory(memory):
     try:
         # Delete old vectors first
         delete_by_memory_id(memory.project_id, memory.id)
-        add_documents(memory.project_id, chunks, metadatas)
-        memory.vector_status = 'indexed'
+        ids = add_documents(memory.project_id, chunks, metadatas)
+        if ids is None:
+            # Vector store unavailable (no embedding key)
+            memory.vector_status = 'pending'
+        else:
+            memory.vector_status = 'indexed'
     except Exception:
         memory.vector_status = 'failed'
 

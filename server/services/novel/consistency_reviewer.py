@@ -24,10 +24,36 @@ def review_chapter(project_id, chapter_id):
         'world_rules': _format_world_rules(project.settings),
     }
 
-    # Build prompt
-    prompt = build_review_prompt(chapter.content_markdown, context)
+    return _do_review(project_id, chapter_id, chapter.content_markdown, context)
 
-    # Call LLM
+
+def review_content(project_id, chapter_id, content):
+    """Run consistency review on arbitrary content (e.g. a draft not yet saved).
+
+    Args:
+        project_id: Project ID.
+        chapter_id: Chapter ID (used for context building).
+        content: The content to review.
+
+    Returns:
+        Review result dict with issues, score, summary.
+    """
+    project = NovelProject.query.get_or_404(project_id)
+    chapter = NovelChapter.query.get_or_404(chapter_id)
+
+    context = {
+        'characters': _build_character_context(project_id, chapter),
+        'previous_summaries': _build_previous_summaries(project_id, chapter),
+        'world_rules': _format_world_rules(project.settings),
+    }
+
+    return _do_review(project_id, chapter_id, content, context)
+
+
+def _do_review(project_id, chapter_id, content, context):
+    """Internal review implementation."""
+    prompt = build_review_prompt(content, context)
+
     from server.services.novel import get_llm_provider
     provider, default_model = get_llm_provider()
 
@@ -40,7 +66,6 @@ def review_chapter(project_id, chapter_id):
         timeout=60,
     )
 
-    # Parse response
     result = _parse_json_response(response)
 
     return {
