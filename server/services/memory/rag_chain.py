@@ -35,8 +35,24 @@ def generate_with_memory(project, chapter, context, system_prompt, user_instruct
         memories = retrieve_memories(project.id, query, k=10)
         memory_text = format_memories_for_prompt(memories, max_chars=3000)
 
+    # Check for conflicts (best effort)
+    conflicts = []
+    if memory_text and context.get('outline'):
+        try:
+            from server.services.memory.conflict_detector import detect_conflicts
+            conflicts = detect_conflicts(project.id, context['outline'], memories)
+        except Exception:
+            pass
+
     # Build enhanced user prompt with memory section
     prompt_sections = []
+    # Add conflict warnings to prompt if found
+    if conflicts:
+        conflict_text = '\n'.join(
+            f'- [{c.get("severity", "medium")}] {c["description"]}'
+            for c in conflicts
+        )
+        prompt_sections.append(f'【设定冲突警告】\n{conflict_text}\n请在生成时避免加剧这些冲突。')
     if context.get('outline'):
         prompt_sections.append(f'【大纲】\n{context["outline"]}')
     if context.get('previous_summaries'):
