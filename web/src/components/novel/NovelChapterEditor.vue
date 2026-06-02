@@ -47,7 +47,6 @@ import { useNovelsStore } from '../../stores/novels'
 
 const store = useNovelsStore()
 const textareaRef = ref(null)
-let saveTimer = null
 
 const wordCountPercent = computed(() => {
   const target = store.currentChapter?.target_words
@@ -56,13 +55,7 @@ const wordCountPercent = computed(() => {
 })
 
 const scheduleAutoSave = () => {
-  store.dirty = true
-  clearTimeout(saveTimer)
-  saveTimer = setTimeout(() => {
-    if (store.dirty && store.currentChapter) {
-      store.saveChapter(store.currentProject.id, store.currentChapter.id, store.currentChapter.content_markdown, store.currentChapter.title)
-    }
-  }, 2000)
+  store.scheduleAutoSave()
 }
 
 const handleContentChange = () => {

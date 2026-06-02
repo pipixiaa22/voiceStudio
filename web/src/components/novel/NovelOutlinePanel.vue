@@ -49,6 +49,7 @@ import { message } from 'ant-design-vue'
 import { useNovelsStore } from '../../stores/novels'
 
 const store = useNovelsStore()
+const switchingChapter = ref(false)
 
 const treeData = computed(() => store.outlineTree)
 const selectedNodeId = ref(null)
@@ -74,13 +75,13 @@ const selectedChapter = computed(() => {
   return store.chapters.find(c => c.outline_node_id === selectedNodeId.value)
 })
 
-const handleOutlineSelect = (selectedKeys) => {
+const handleOutlineSelect = async (selectedKeys) => {
   if (!selectedKeys.length) return
   const nodeId = selectedKeys[0]
   selectedNodeId.value = nodeId
   const chapter = store.chapters.find(c => c.outline_node_id === nodeId)
   if (chapter) {
-    store.loadChapter(store.currentProject.id, chapter.id)
+    await switchChapter(chapter.id)
   }
 }
 
@@ -92,16 +93,28 @@ const handleCreateChapterFromNode = async () => {
       outline_node_id: selectedNode.value.id,
       target_words: selectedNode.value.target_words || store.currentProject.words_per_chapter,
     })
-    await store.loadChapter(store.currentProject.id, chapter.id)
+    await switchChapter(chapter.id)
     message.success('章节已创建')
   } catch {
     message.error('创建失败')
   }
 }
 
-const handleChapterClick = (chapter) => {
+const handleChapterClick = async (chapter) => {
   if (store.currentProject) {
-    store.loadChapter(store.currentProject.id, chapter.id)
+    await switchChapter(chapter.id)
+  }
+}
+
+const switchChapter = async (cid) => {
+  if (switchingChapter.value) return
+  switchingChapter.value = true
+  try {
+    await store.loadChapter(store.currentProject.id, cid)
+  } catch (e) {
+    message.error('切换章节失败: ' + (e.response?.data?.error || e.message))
+  } finally {
+    switchingChapter.value = false
   }
 }
 

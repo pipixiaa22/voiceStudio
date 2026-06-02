@@ -19,6 +19,8 @@ export const useNovelsStore = defineStore('novels', {
     currentChapter: null,
     currentChapterLoading: false,
     _lastSavedSnapshot: null,
+    _autoSaveTimer: null,
+    _autoSaveChapterId: null,
 
     // Versions
     versions: [],
@@ -131,7 +133,33 @@ export const useNovelsStore = defineStore('novels', {
       return data
     },
 
+    scheduleAutoSave() {
+      this.dirty = true
+      this.cancelAutoSave()
+      if (!this.currentChapter) return
+      const cid = this.currentChapter.id
+      const pid = this.currentProject.id
+      const content = this.currentChapter.content_markdown
+      const title = this.currentChapter.title
+      this._autoSaveChapterId = cid
+      this._autoSaveTimer = setTimeout(async () => {
+        // Only save if still on the same chapter and still dirty
+        if (this._autoSaveChapterId === cid && this.currentChapter?.id === cid) {
+          await this.saveChapter(pid, cid, content, title)
+        }
+      }, 2000)
+    },
+
+    cancelAutoSave() {
+      if (this._autoSaveTimer) {
+        clearTimeout(this._autoSaveTimer)
+        this._autoSaveTimer = null
+        this._autoSaveChapterId = null
+      }
+    },
+
     async saveIfDirty() {
+      this.cancelAutoSave()
       if (this.dirty && this.currentChapter) {
         await this.saveChapter(
           this.currentProject.id,
@@ -143,8 +171,16 @@ export const useNovelsStore = defineStore('novels', {
     },
 
     async loadChapter(pid, cid) {
-      // Save any pending changes before switching
-      await this.saveIfDirty()
+      // Cancel pending auto-save and save dirty content before switching
+      this.cancelAutoSave()
+      if (this.dirty && this.currentChapter && this.currentChapter.id !== cid) {
+        await this.saveChapter(
+          this.currentProject.id,
+          this.currentChapter.id,
+          this.currentChapter.content_markdown,
+          this.currentChapter.title,
+        )
+      }
       this.currentChapterLoading = true
       try {
         const { data } = await novelsApi.getChapter(pid, cid)
@@ -164,9 +200,15 @@ export const useNovelsStore = defineStore('novels', {
         const payload = { content_markdown: content }
         if (title !== undefined) payload.title = title
         const { data } = await novelsApi.updateChapter(pid, cid, payload)
-        this.currentChapter = data
-        this._lastSavedSnapshot = `${data.title}||${data.content_markdown}`
-        this.dirty = false
+        // Only update editor state if we're still on the same chapter
+        if (this.currentChapter?.id === cid) {
+          this.currentChapter = data
+          this._lastSavedSnapshot = `${data.title}||${data.content_markdown}`
+          this.dirty = false
+        }
+        // Always update the chapter list entry
+        const idx = this.chapters.findIndex(c => c.id === cid)
+        if (idx !== -1) this.chapters[idx] = { ...this.chapters[idx], ...data }
       } catch (e) {
         this.saveError = e.message
         throw e
