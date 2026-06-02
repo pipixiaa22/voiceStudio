@@ -24,6 +24,7 @@
         <div class="top-right">
           <span class="save-status" :class="saveStatusClass">{{ saveStatusText }}</span>
           <a-button size="small" @click="handleSave" :loading="store.saving">保存</a-button>
+          <a-button size="small" @click="showBlueprintWizard = true">生成蓝图</a-button>
           <a-button size="small" type="primary" @click="handleGenerate">生成</a-button>
           <a-button size="small" @click="handleReview">审稿</a-button>
           <a-button size="small" @click="handleExtract">提取图谱</a-button>

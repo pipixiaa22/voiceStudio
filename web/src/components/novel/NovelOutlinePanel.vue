@@ -13,6 +13,11 @@
           @select="handleOutlineSelect"
         />
         <a-empty v-else description="暂无大纲" />
+        <!-- Quick action for selected outline node -->
+        <div v-if="selectedNode && selectedNode.node_type === 'chapter' && !selectedChapter" class="outline-quick">
+          <p>此大纲节点暂无关联章节</p>
+          <a-button size="small" type="primary" @click="handleCreateChapterFromNode">创建章节</a-button>
+        </div>
       </a-tab-pane>
 
       <a-tab-pane key="chapters" tab="章节">
@@ -39,21 +44,58 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { message } from 'ant-design-vue'
 import { useNovelsStore } from '../../stores/novels'
 
 const store = useNovelsStore()
 
 const treeData = computed(() => store.outlineTree)
+const selectedNodeId = ref(null)
+
+const findNode = (nodes, id) => {
+  for (const n of nodes) {
+    if (n.id === id) return n
+    if (n.children) {
+      const found = findNode(n.children, id)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+const selectedNode = computed(() => {
+  if (!selectedNodeId.value) return null
+  return findNode(store.outlineTree, selectedNodeId.value)
+})
+
+const selectedChapter = computed(() => {
+  if (!selectedNodeId.value) return null
+  return store.chapters.find(c => c.outline_node_id === selectedNodeId.value)
+})
 
 const handleOutlineSelect = (selectedKeys) => {
   if (!selectedKeys.length) return
   const nodeId = selectedKeys[0]
-  // Find the chapter associated with this outline node
+  selectedNodeId.value = nodeId
   const chapter = store.chapters.find(c => c.outline_node_id === nodeId)
   if (chapter) {
     store.loadChapter(store.currentProject.id, chapter.id)
+  }
+}
+
+const handleCreateChapterFromNode = async () => {
+  if (!selectedNode.value || !store.currentProject) return
+  try {
+    const chapter = await store.createChapter(store.currentProject.id, {
+      title: selectedNode.value.title,
+      outline_node_id: selectedNode.value.id,
+      target_words: selectedNode.value.target_words || store.currentProject.words_per_chapter,
+    })
+    await store.loadChapter(store.currentProject.id, chapter.id)
+    message.success('章节已创建')
+  } catch {
+    message.error('创建失败')
   }
 }
 
@@ -96,6 +138,16 @@ const enterGraph = (type) => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+.outline-quick {
+  padding: 8px;
+  border-top: 1px solid var(--surface-border);
+  text-align: center;
+}
+.outline-quick p {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
 }
 :deep(.ant-list-item) {
   cursor: pointer;

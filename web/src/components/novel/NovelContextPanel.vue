@@ -25,10 +25,21 @@ import { computed } from 'vue'
 import { useNovelsStore } from '../../stores/novels'
 const store = useNovelsStore()
 
+const findOutlineNode = (nodes, id) => {
+  for (const n of nodes) {
+    if (n.id === id) return n
+    if (n.children) {
+      const found = findOutlineNode(n.children, id)
+      if (found) return found
+    }
+  }
+  return null
+}
+
 const outlineText = computed(() => {
-  const node = store.outlineTree.find(n =>
-    n.children?.some(c => c.id === store.currentChapter?.outline_node_id)
-  )
+  const nodeId = store.currentChapter?.outline_node_id
+  if (!nodeId) return '暂无大纲信息'
+  const node = findOutlineNode(store.outlineTree, nodeId)
   return node?.summary || '暂无大纲信息'
 })
 </script>

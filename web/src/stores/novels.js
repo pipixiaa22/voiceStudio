@@ -125,6 +125,12 @@ export const useNovelsStore = defineStore('novels', {
       this.chapters = data
     },
 
+    async createChapter(pid, chapterData) {
+      const { data } = await novelsApi.createChapter(pid, chapterData)
+      this.chapters.push(data)
+      return data
+    },
+
     async loadChapter(pid, cid) {
       this.currentChapterLoading = true
       try {
@@ -174,6 +180,8 @@ export const useNovelsStore = defineStore('novels', {
       const { data } = await novelsApi.acceptVersion(pid, cid, vid)
       this.currentChapter = data
       this.versions = data.versions || []
+      this._lastSavedSnapshot = `${data.title}||${data.content_markdown}`
+      this.dirty = false
       return data
     },
 

@@ -55,7 +55,7 @@ const wordCountPercent = computed(() => {
   return Math.min(100, Math.round((store.chapterWordCount / target) * 100))
 })
 
-const handleContentChange = () => {
+const scheduleAutoSave = () => {
   store.dirty = true
   clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
@@ -65,6 +65,10 @@ const handleContentChange = () => {
   }, 2000)
 }
 
+const handleContentChange = () => {
+  scheduleAutoSave()
+}
+
 const insertMarkdown = (prefix) => {
   const ta = textareaRef.value?.$el?.querySelector('textarea')
   if (!ta) return
@@ -72,7 +76,7 @@ const insertMarkdown = (prefix) => {
   const end = ta.selectionEnd
   const text = store.currentChapter.content_markdown
   store.currentChapter.content_markdown = text.slice(0, start) + prefix + text.slice(end)
-  store.dirty = true
+  scheduleAutoSave()
 }
 
 const wrapMarkdown = (wrapper) => {
@@ -83,7 +87,7 @@ const wrapMarkdown = (wrapper) => {
   const text = store.currentChapter.content_markdown
   const selected = text.slice(start, end)
   store.currentChapter.content_markdown = text.slice(0, start) + wrapper + selected + wrapper + text.slice(end)
-  store.dirty = true
+  scheduleAutoSave()
 }
 </script>
 
