@@ -11,6 +11,7 @@ from server.models.novel import (
     NovelEntity, NovelRelation,
     NovelEvent, NovelEventRelation,
     NovelGraphChange, NovelGeneration,
+    NovelMemory, NovelMemoryChange,
 )
 
 __all__ = [
@@ -26,4 +27,5 @@ __all__ = [
     'NovelEntity', 'NovelRelation',
     'NovelEvent', 'NovelEventRelation',
     'NovelGraphChange', 'NovelGeneration',
+    'NovelMemory', 'NovelMemoryChange',
 ]
