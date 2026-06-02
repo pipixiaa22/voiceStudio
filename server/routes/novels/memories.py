@@ -195,7 +195,7 @@ def confirm_memory_change(project_id, change_id):
             from server.services.memory.memory_writer import index_memory
             index_memory(target_memory)
         except Exception:
-            pass
+            logger.exception('Failed to index confirmed memory %s', target_memory.id)
 
     return jsonify(change.to_dict())
 
@@ -220,6 +220,11 @@ def reindex_memories(project_id):
     NovelProject.query.get_or_404(project_id)
     memories = NovelMemory.query.filter_by(project_id=project_id, status='active').all()
 
+    # Mark all as pending BEFORE rebuilding so crash doesn't leave stale 'indexed'
+    for mem in memories:
+        mem.vector_status = 'pending'
+    db.session.flush()
+
     from server.services.memory.vector_store import rebuild_index
     count = rebuild_index(project_id, memories)
 
@@ -227,11 +232,6 @@ def reindex_memories(project_id):
     if count > 0:
         for mem in memories:
             mem.vector_status = 'indexed'
-    else:
-        # Vector store unavailable — keep as pending
-        for mem in memories:
-            if mem.vector_status != 'indexed':
-                mem.vector_status = 'pending'
 
     db.session.commit()
 

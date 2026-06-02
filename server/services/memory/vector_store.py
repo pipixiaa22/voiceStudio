@@ -14,30 +14,29 @@ def get_vector_store(project_id):
     """Get or create a Chroma vector store for a project.
 
     Each project gets its own collection to prevent cross-project contamination.
-    Thread-safe: uses a lock to prevent duplicate store creation.
+    Thread-safe: entire creation is inside the lock to prevent duplicates.
     """
     project_id = str(project_id)
     with _stores_lock:
         if project_id in _stores:
             return _stores[project_id]
 
-    from server.services.memory.embeddings import get_embeddings
-    embeddings = get_embeddings()
-    if embeddings is None:
-        return None
+        from server.services.memory.embeddings import get_embeddings
+        embeddings = get_embeddings()
+        if embeddings is None:
+            return None
 
-    persist_dir = os.path.join(os.getcwd(), 'data', 'chromadb')
-    os.makedirs(persist_dir, exist_ok=True)
+        persist_dir = os.path.join(os.getcwd(), 'data', 'chromadb')
+        os.makedirs(persist_dir, exist_ok=True)
 
-    from langchain_community.vectorstores import Chroma
-    store = Chroma(
-        collection_name=f'novel_{project_id}',
-        embedding_function=embeddings,
-        persist_directory=persist_dir,
-    )
-    with _stores_lock:
+        from langchain_community.vectorstores import Chroma
+        store = Chroma(
+            collection_name=f'novel_{project_id}',
+            embedding_function=embeddings,
+            persist_directory=persist_dir,
+        )
         _stores[project_id] = store
-    return store
+        return store
 
 
 def invalidate_store(project_id):

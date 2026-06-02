@@ -159,31 +159,34 @@ def extract_and_create_changes(project_id, chapter_id, chapter_content):
     # Create "modify" changes for updates (populate before field)
     for item in result.get('updates', []):
         existing_title = item.get('existing_title', '')
-        existing = None
-        if existing_title:
-            existing = NovelMemory.query.filter_by(
-                project_id=project_id, title=existing_title, status='active'
-            ).first()
+        new_content = item.get('new_content', '')
+        if not existing_title or not new_content:
+            continue
+
+        existing = NovelMemory.query.filter_by(
+            project_id=project_id, title=existing_title, status='active'
+        ).first()
+        if not existing:
+            continue
 
         change = NovelMemoryChange(
             project_id=project_id,
             change_type='modify',
             after={
                 'title': existing_title,
-                'content': item.get('new_content', ''),
-                'memory_type': item.get('memory_type', 'summary'),
+                'content': new_content,
+                'memory_type': item.get('memory_type', existing.memory_type),
             },
             source='ai_extract',
             status='pending',
         )
-        if existing:
-            change.memory_id = existing.id
-            change.before = {
-                'title': existing.title,
-                'content': existing.content,
-                'memory_type': existing.memory_type,
-                'importance': existing.importance,
-            }
+        change.memory_id = existing.id
+        change.before = {
+            'title': existing.title,
+            'content': existing.content,
+            'memory_type': existing.memory_type,
+            'importance': existing.importance,
+        }
         db.session.add(change)
         changes.append(change)
 
