@@ -19,6 +19,7 @@
             { label: '写作', value: 'write' },
             { label: '图谱', value: 'graph' },
             { label: '审稿', value: 'review' },
+            { label: '记忆', value: 'memory' },
           ]" size="small" />
         </div>
         <div class="top-right">
@@ -73,6 +74,23 @@
         </div>
       </div>
 
+      <!-- Memory mode -->
+      <div v-else-if="store.activeMode === 'memory'" class="workspace-main">
+        <div class="workspace-left">
+          <NovelMemoryPanel />
+        </div>
+        <div class="workspace-center">
+          <NovelMemorySearch />
+        </div>
+        <div class="workspace-right">
+          <a-tabs size="small">
+            <a-tab-pane key="changes" tab="待确认">
+              <NovelMemoryChangeReview />
+            </a-tab-pane>
+          </a-tabs>
+        </div>
+      </div>
+
       <!-- Review mode -->
       <div v-else class="workspace-main">
         <div class="workspace-left">
@@ -121,6 +139,9 @@ import NovelRelationInspector from '../components/novel/NovelRelationInspector.v
 import NovelEventInspector from '../components/novel/NovelEventInspector.vue'
 import NovelExtractionReviewModal from '../components/novel/NovelExtractionReviewModal.vue'
 import NovelBlueprintWizard from '../components/novel/NovelBlueprintWizard.vue'
+import NovelMemoryPanel from '../components/novel/NovelMemoryPanel.vue'
+import NovelMemorySearch from '../components/novel/NovelMemorySearch.vue'
+import NovelMemoryChangeReview from '../components/novel/NovelMemoryChangeReview.vue'
 
 const route = useRoute()
 const store = useNovelsStore()

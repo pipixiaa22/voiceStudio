@@ -64,7 +64,7 @@ def start_generation(project_id, generation_type, target_id=None, params=None):
         return gen
 
     # Check chapter-level lock for chapter_version and extract
-    if generation_type in ('chapter_version', 'extract', 'review') and target_id:
+    if generation_type in ('chapter_version', 'extract', 'review', 'chapter_workflow') and target_id:
         lock_key = redis_key('novel', 'lock', generation_type, str(target_id))
         r = get_redis()
         if r is not None:
@@ -126,6 +126,8 @@ def _run_generation(gen_id, params, lock_key, token):
                 _run_extract(gen, params)
             elif gen.generation_type == 'review':
                 _run_review(gen, params)
+            elif gen.generation_type == 'chapter_workflow':
+                _run_chapter_workflow(gen, params)
             else:
                 raise ValueError(f'未知的生成类型: {gen.generation_type}')
 
@@ -176,3 +178,22 @@ def _run_review(gen, params):
     result = review_chapter(gen.project_id, gen.target_id)
     gen.result = result
     _update_progress(gen, 100)
+
+
+def _run_chapter_workflow(gen, params):
+    """Run the LangGraph chapter workflow."""
+    from server.services.memory.workflow import run_chapter_workflow
+
+    result = run_chapter_workflow(
+        project_id=gen.project_id,
+        chapter_id=gen.target_id,
+        user_instruction=params.get('user_instruction', ''),
+        version_type=params.get('version_type', 'custom'),
+        model_key=params.get('model_key'),
+    )
+
+    gen.result = {
+        'version_id': result.get('version_id'),
+        'memory_changes': result.get('memory_changes', []),
+        'conflicts': result.get('conflicts', []),
+    }

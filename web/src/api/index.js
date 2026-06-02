@@ -213,6 +213,7 @@ export const novelsApi = {
   acceptGraphChange: (pid, gid) => api.post(`/novels/${pid}/graph-changes/${gid}/accept`),
   rejectGraphChange: (pid, gid) => api.post(`/novels/${pid}/graph-changes/${gid}/reject`),
   reviewChapter: (pid, cid, data) => api.post(`/novels/${pid}/chapters/${cid}/review`, data),
+  generateWorkflow: (pid, cid, params) => api.post(`/novels/${pid}/chapters/${cid}/generate-workflow`, params),
 
   // Generation
   getGeneration: (gid) => api.get(`/novels/generations/${gid}`),

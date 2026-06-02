@@ -36,6 +36,12 @@ export const useNovelsStore = defineStore('novels', {
     // Graph changes (AI extraction)
     graphChanges: [],
 
+    // Memories
+    memories: [],
+    memoryChanges: [],
+    memorySearchResults: [],
+    memoryLoading: false,
+
     // Generation
     generation: null,
     generationEventSource: null,
@@ -442,6 +448,60 @@ export const useNovelsStore = defineStore('novels', {
       this.graphChanges = this.graphChanges.filter(c => c.id !== gid)
     },
 
+    // --- Memories ---
+    async fetchMemories(pid, params = {}) {
+      this.memoryLoading = true
+      try {
+        const { data } = await novelsApi.listMemories(pid, params)
+        this.memories = data
+      } finally {
+        this.memoryLoading = false
+      }
+    },
+
+    async createMemory(pid, memoryData) {
+      const { data } = await novelsApi.createMemory(pid, memoryData)
+      this.memories.unshift(data)
+      return data
+    },
+
+    async updateMemory(pid, mid, memoryData) {
+      const { data } = await novelsApi.updateMemory(pid, mid, memoryData)
+      const idx = this.memories.findIndex(m => m.id === mid)
+      if (idx !== -1) this.memories[idx] = data
+      return data
+    },
+
+    async deleteMemory(pid, mid) {
+      await novelsApi.deleteMemory(pid, mid)
+      this.memories = this.memories.filter(m => m.id !== mid)
+    },
+
+    async searchMemories(pid, query) {
+      const { data } = await novelsApi.searchMemories(pid, { query, k: 10 })
+      this.memorySearchResults = data.results || []
+      return data
+    },
+
+    async fetchMemoryChanges(pid) {
+      const { data } = await novelsApi.listMemoryChanges(pid)
+      this.memoryChanges = data
+    },
+
+    async confirmMemoryChange(pid, cid) {
+      await novelsApi.confirmMemoryChange(pid, cid)
+      this.memoryChanges = this.memoryChanges.filter(c => c.id !== cid)
+    },
+
+    async rejectMemoryChange(pid, cid) {
+      await novelsApi.rejectMemoryChange(pid, cid)
+      this.memoryChanges = this.memoryChanges.filter(c => c.id !== cid)
+    },
+
+    async reindexMemories(pid) {
+      await novelsApi.reindexMemories(pid)
+    },
+
     // --- Cleanup ---
     cleanup() {
       if (this.generationEventSource) {
@@ -458,6 +518,9 @@ export const useNovelsStore = defineStore('novels', {
       this.events = []
       this.eventRelations = []
       this.graphChanges = []
+      this.memories = []
+      this.memoryChanges = []
+      this.memorySearchResults = []
       this.generation = null
     },
   },
