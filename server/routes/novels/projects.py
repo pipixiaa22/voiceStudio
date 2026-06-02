@@ -83,16 +83,26 @@ def delete_project(project_id):
     from server.models.novel.event import NovelEvent, NovelEventRelation
     from server.models.novel.graph_change import NovelGraphChange, NovelGeneration
 
+    # Delete in dependency order (children first, then parents)
     chapter_ids = [c.id for c in NovelChapter.query.filter_by(project_id=project_id).all()]
+
+    # 1. NovelGraphChange references chapter — delete before chapters
+    NovelGraphChange.query.filter_by(project_id=project_id).delete()
+    # 2. NovelChapterVersion references chapter — delete before chapters
     if chapter_ids:
         NovelChapterVersion.query.filter(NovelChapterVersion.chapter_id.in_(chapter_ids)).delete(synchronize_session=False)
+    # 3. NovelEventRelation references event — delete before events
+    NovelEventRelation.query.filter_by(project_id=project_id).delete()
+    # 4. NovelEvent references entity (location_entity_id) and chapter — delete before entity/chapter
+    NovelEvent.query.filter_by(project_id=project_id).delete()
+    # 5. Now safe to delete chapters and outline
     NovelChapter.query.filter_by(project_id=project_id).delete()
     NovelOutlineNode.query.filter_by(project_id=project_id).delete()
+    # 6. NovelRelation references entity — delete before entity
     NovelRelation.query.filter_by(project_id=project_id).delete()
+    # 7. Now safe to delete entities
     NovelEntity.query.filter_by(project_id=project_id).delete()
-    NovelEventRelation.query.filter_by(project_id=project_id).delete()
-    NovelEvent.query.filter_by(project_id=project_id).delete()
-    NovelGraphChange.query.filter_by(project_id=project_id).delete()
+    # 8. NovelGeneration has no FK deps on other novel tables
     NovelGeneration.query.filter_by(project_id=project_id).delete()
 
     db.session.delete(project)
