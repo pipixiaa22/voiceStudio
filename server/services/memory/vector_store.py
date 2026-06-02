@@ -89,6 +89,35 @@ def delete_by_memory_id(project_id, memory_id):
         logger.warning(f'Failed to delete vectors for memory {memory_id}')
 
 
+def _clear_collection(store):
+    """Delete all documents from a Chroma collection.
+
+    Tries multiple strategies since the API varies across versions:
+    1. Get all IDs and delete by IDs (most reliable)
+    2. Delete with where filter on a known metadata field
+    3. Fall back to internal _collection.delete
+    """
+    try:
+        result = store.get(include=[])
+        all_ids = result.get('ids', [])
+        if all_ids:
+            store.delete(ids=all_ids)
+        return
+    except Exception:
+        pass
+
+    try:
+        store._collection.delete(where={'memory_id': {'$ne': '__no_match__'}})
+        return
+    except Exception:
+        pass
+
+    try:
+        store._collection.delete(where={})
+    except Exception:
+        logger.warning('All collection clear strategies failed')
+
+
 def rebuild_index(project_id, memories):
     """Rebuild the entire vector index for a project from memory records.
 
@@ -108,14 +137,7 @@ def rebuild_index(project_id, memories):
         return 0
 
     # Clear existing collection
-    try:
-        # Try public API first, fall back to internal if needed
-        try:
-            store.delete(where={})
-        except (TypeError, AttributeError):
-            store._collection.delete(where={})
-    except Exception:
-        logger.warning('Failed to clear vector collection for project %s', project_id)
+    _clear_collection(store)
 
     from server.services.memory.chunker import chunk_text
 

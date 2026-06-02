@@ -89,6 +89,18 @@ def update_memory(project_id, memory_id):
 
     data = request.get_json() or {}
 
+    from server.services.memory.document_types import MEMORY_TYPES
+
+    # Validate memory_type if provided
+    if 'memory_type' in data and data['memory_type'] not in MEMORY_TYPES:
+        return jsonify({'error': f'无效的记忆类型: {data["memory_type"]}'}), 400
+
+    # Validate and clamp importance if provided
+    if 'importance' in data:
+        imp = data['importance']
+        if not isinstance(imp, int) or not (1 <= imp <= 5):
+            return jsonify({'error': '重要性必须是 1-5 的整数'}), 400
+
     for field in ('title', 'content', 'summary', 'memory_type', 'source_type',
                   'importance', 'status'):
         if field in data:
@@ -251,7 +263,11 @@ def search_memories(project_id):
     NovelProject.query.get_or_404(project_id)
     data = request.get_json() or {}
     query = data.get('query', '')
-    k = min(int(data.get('k', 10)), 50)
+    try:
+        k = int(data.get('k', 10))
+    except (ValueError, TypeError):
+        k = 10
+    k = max(1, min(k, 50))
     memory_type = data.get('memory_type')
 
     from server.services.memory.retriever import retrieve_memories, retrieve_by_type

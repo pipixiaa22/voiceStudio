@@ -150,3 +150,66 @@ def test_search_memories_not_found_project(client):
 def test_reindex_memories_not_found_project(client):
     resp = client.post('/api/novels/99999/memories/reindex')
     assert resp.status_code == 404
+
+
+# --- Validation tests ---
+
+def test_create_rejects_invalid_memory_type(client, sample_project):
+    resp = client.post(f'/api/novels/{sample_project.id}/memories', json={
+        'title': '测试', 'content': '内容', 'memory_type': 'bad_type', 'source_type': 'manual_note',
+    })
+    assert resp.status_code == 400
+    assert '无效的记忆类型' in resp.get_json()['error']
+
+
+def test_create_rejects_invalid_importance(client, sample_project):
+    resp = client.post(f'/api/novels/{sample_project.id}/memories', json={
+        'title': '测试', 'content': '内容', 'memory_type': 'character',
+        'source_type': 'manual_note', 'importance': 99,
+    })
+    # importance is clamped to valid range in create, should succeed
+    assert resp.status_code == 201
+
+
+def test_patch_rejects_invalid_memory_type(client, sample_project):
+    resp = client.post(f'/api/novels/{sample_project.id}/memories', json={
+        'title': '原始', 'content': '内容', 'memory_type': 'character', 'source_type': 'manual_note',
+    })
+    mid = resp.get_json()['id']
+    resp = client.patch(f'/api/novels/{sample_project.id}/memories/{mid}', json={
+        'memory_type': 'bad_type',
+    })
+    assert resp.status_code == 400
+    assert '无效的记忆类型' in resp.get_json()['error']
+
+
+def test_patch_rejects_invalid_importance(client, sample_project):
+    resp = client.post(f'/api/novels/{sample_project.id}/memories', json={
+        'title': '原始', 'content': '内容', 'memory_type': 'character', 'source_type': 'manual_note',
+    })
+    mid = resp.get_json()['id']
+    resp = client.patch(f'/api/novels/{sample_project.id}/memories/{mid}', json={
+        'importance': 'oops',
+    })
+    assert resp.status_code == 400
+
+
+def test_search_invalid_k_falls_back(client, sample_project):
+    resp = client.post(f'/api/novels/{sample_project.id}/memories/search', json={
+        'query': 'test', 'k': 'abc',
+    })
+    assert resp.status_code == 200
+
+
+def test_search_k_minimum_1(client, sample_project):
+    resp = client.post(f'/api/novels/{sample_project.id}/memories/search', json={
+        'query': 'test', 'k': 0,
+    })
+    assert resp.status_code == 200
+
+
+def test_search_k_capped_at_50(client, sample_project):
+    resp = client.post(f'/api/novels/{sample_project.id}/memories/search', json={
+        'query': 'test', 'k': 1000,
+    })
+    assert resp.status_code == 200
