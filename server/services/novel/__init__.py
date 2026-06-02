@@ -18,16 +18,22 @@ def get_llm_provider():
     from server.services.model_registry import ModelRegistry
     registry = ModelRegistry()
 
-    # 1. Check custom providers with llm_text capability
+    # 1. Check custom providers with llm_text capability AND valid API key
     try:
         from server.models.provider import CustomProvider
         for cp in CustomProvider.query.all():
             models = json.loads(cp.models_json) if cp.models_json else []
+            has_llm = any('llm_text' in m.get('capabilities', []) for m in models)
+            if not has_llm:
+                continue
+            api_key = os.environ.get(f'{cp.provider_key.upper()}_API_KEY', '')
+            if not api_key:
+                continue  # Skip custom provider without API key
             for m in models:
                 if 'llm_text' in m.get('capabilities', []):
                     provider = registry.create_provider(
                         cp.provider_key,
-                        api_key=os.environ.get(f'{cp.provider_key.upper()}_API_KEY', ''),
+                        api_key=api_key,
                         base_url=cp.base_url,
                         provider_type='openai_compatible',
                     )

@@ -110,8 +110,14 @@ def accept_graph_change(project_id, change_id):
     if change.project_id != project_id:
         return jsonify({'error': '变更不属于该项目'}), 400
 
-    change.accepted = True
-    _apply_graph_change(change)
+    try:
+        _apply_graph_change(change)
+        change.accepted = True
+    except ValueError as e:
+        change.accepted = False
+        db.session.commit()
+        return jsonify({'error': str(e), 'change': change.to_dict()}), 400
+
     db.session.commit()
     return jsonify(change.to_dict())
 
@@ -125,6 +131,22 @@ def reject_graph_change(project_id, change_id):
     change.accepted = False
     db.session.commit()
     return jsonify(change.to_dict())
+
+
+def _validate_entity_in_project(entity_id, project_id, label='实体'):
+    if not entity_id:
+        raise ValueError(f'{label} ID 不能为空')
+    entity = NovelEntity.query.get(entity_id)
+    if not entity or entity.project_id != project_id:
+        raise ValueError(f'{label} {entity_id} 不属于该项目')
+
+
+def _validate_event_in_project(event_id, project_id, label='事件'):
+    if not event_id:
+        raise ValueError(f'{label} ID 不能为空')
+    event = NovelEvent.query.get(event_id)
+    if not event or event.project_id != project_id:
+        raise ValueError(f'{label} {event_id} 不属于该项目')
 
 
 def _apply_graph_change(change):
@@ -151,6 +173,8 @@ def _apply_graph_change(change):
             change.target_id = entity.id
 
         elif change.target_type == 'relation':
+            _validate_entity_in_project(after.get('source_entity_id'), change.project_id, '源实体')
+            _validate_entity_in_project(after.get('target_entity_id'), change.project_id, '目标实体')
             rel = NovelRelation(
                 project_id=change.project_id,
                 source_entity_id=after['source_entity_id'],
@@ -180,6 +204,8 @@ def _apply_graph_change(change):
             change.target_id = event.id
 
         elif change.target_type == 'event_relation':
+            _validate_event_in_project(after.get('source_event_id'), change.project_id, '源事件')
+            _validate_event_in_project(after.get('target_event_id'), change.project_id, '目标事件')
             rel = NovelEventRelation(
                 project_id=change.project_id,
                 source_event_id=after['source_event_id'],
@@ -196,21 +222,23 @@ def _apply_graph_change(change):
     elif change.change_type == 'modify':
         if change.target_type == 'entity':
             entity = NovelEntity.query.get(change.target_id)
-            if entity:
-                for k, v in after.items():
-                    if k in ('name', 'summary', 'importance', 'entity_type'):
-                        setattr(entity, k, v)
-                    elif k == 'aliases':
-                        entity.aliases = v
-                    elif k == 'attributes':
-                        entity.attributes = v
+            if not entity or entity.project_id != change.project_id:
+                raise ValueError(f'实体 {change.target_id} 不属于该项目')
+            for k, v in after.items():
+                if k in ('name', 'summary', 'importance', 'entity_type'):
+                    setattr(entity, k, v)
+                elif k == 'aliases':
+                    entity.aliases = v
+                elif k == 'attributes':
+                    entity.attributes = v
 
         elif change.target_type == 'relation':
             rel = NovelRelation.query.get(change.target_id)
-            if rel:
-                for k, v in after.items():
-                    if hasattr(rel, k):
-                        setattr(rel, k, v)
+            if not rel or rel.project_id != change.project_id:
+                raise ValueError(f'关系 {change.target_id} 不属于该项目')
+            for k, v in after.items():
+                if hasattr(rel, k):
+                    setattr(rel, k, v)
 
 
 @novels_bp.route('/api/novels/<int:project_id>/chapters/<int:chapter_id>/review', methods=['POST'])
