@@ -1,6 +1,6 @@
 # Script
 
-中文 SRT 字幕生成与短视频生产工具。除了核心的中文文本智能分句与 SRT 字幕生成外，还提供 TTS 语音合成、视频模板渲染、语音工作流编排、内容发现、多模型供应商管理等能力，并附带一个 Vue 3 + Flask 的 Web 工作台。
+中文 SRT 字幕生成与短视频生产工具。除了核心的中文文本智能分句与 SRT 字幕生成外，还提供 TTS 语音合成、视频模板渲染、语音工作流编排、内容发现、多模型供应商管理、小说续写与长期记忆等能力，并附带一个 Vue 3 + Flask 的 Web 工作台。
 
 ## 功能特性
 
@@ -10,6 +10,8 @@
 - **视频生成流水线**：场景规划 → TTS 合成 → BGM / 环境音混音 → 视频渲染 → 剪映 / CapCut 草稿导出
 - **语音工作流**：基于 `@vue-flow/core` 的节点画布，按片段配置情感、强度、语速、音量、停顿等参数
 - **内容发现**：可插拔连接器（YouTube / 手动 URL），结合 LLM 自动分析与脚本改写
+- **小说续写工作台**：大纲管理、Markdown 编辑器、AI 多版本生成、人物关系图 / 事件因果图、一致性审稿
+- **RAG 长期记忆**：基于 LangChain + ChromaDB 的向量检索，自动抽取章节事实、冲突检测、多步骤 LangGraph 工作流
 - **内容管理**：文字、文件夹、标签、语音档案、视频模板的统一管理（SQLite + 可选 MySQL）
 - **Web 工作台**：Vue 3 + Vite + Pinia + Ant Design Vue，前后端分离开发
 
@@ -23,8 +25,12 @@
 │
 ├── server/                # Flask 后端
 │   ├── app.py             # 应用工厂：注册蓝图、初始化数据库、播种视频模板
-│   ├── models/            # SQLAlchemy 模型（text / folder / video / provider / discovery / voice_workflow）
-│   ├── routes/            # REST 蓝图：texts / folders / tags / tts / video / voice_profiles / models / discovery / voice_workflows
+│   ├── models/            # SQLAlchemy 模型
+│   │   ├── text.py / folder.py / video.py / provider.py / discovery.py / voice_workflow.py
+│   │   └── novel/         # 小说模块模型（project / outline / chapter / entity / event / graph_change / memory）
+│   ├── routes/            # REST 蓝图
+│   │   ├── texts / folders / tags / tts / video / voice_profiles / models / discovery / voice_workflows
+│   │   └── novels/        # 小说路由（projects / outline / chapters / entities / events / graph / memories）
 │   └── services/          # 业务逻辑
 │       ├── model_provider_base.py / model_registry.py / providers/   # 可插拔模型供应商
 │       ├── tts_adapters/                                              # TTS 适配器层
@@ -32,15 +38,18 @@
 │       ├── audio_mixer.py / audio_postprocess.py / audio_package.py  # 音频处理
 │       ├── voice_workflow_service.py / emotion_planner.py            # 语音工作流
 │       ├── discovery/                                                 # 内容发现连接器
+│       ├── novel/           # 小说生成服务（context_builder / chapter_generator / prompt_templates / generation_runner）
+│       ├── memory/          # RAG 长期记忆（retriever / rag_chain / vector_store / memory_writer / conflict_detector / workflow）
 │       ├── jianying_draft.py / capcut_package.py                      # 剪映/CapCut 导出
 │       └── ...
 │
 ├── web/                   # Vue 3 前端
 │   └── src/
-│       ├── views/         # TextList / TextEdit / Import / QuickGenerate / Discovery / VoiceWorkflowList / VoiceWorkflowView
-│       ├── components/    # video/ settings/ voice-workflow/ discovery/
-│       ├── stores/        # Pinia: texts / folders / tags / settings / modelSettings / discovery / voiceWorkflows
-│       └── api/           # Axios API 封装
+│       ├── views/         # TextList / TextEdit / Import / QuickGenerate / Discovery / VoiceWorkflowList / VoiceWorkflowView / NovelProjectList / NovelWorkspace
+│       ├── components/    # video/ settings/ voice-workflow/ discovery/ novel/ (MemoryPanel / CharacterGraph / EventGraph / ...)
+│       ├── stores/        # Pinia: texts / folders / tags / settings / modelSettings / discovery / voiceWorkflows / novels
+│       ├── utils/         # memoryTypes 等共享工具
+│       └── api/           # Axios API 封装（含 novelsApi 60+ 端点）
 │
 ├── tests/                 # 核心模块测试（splitter、srt）
 ├── server/tests/          # 后端测试
@@ -161,6 +170,35 @@ srt_bi = generate_bilingual_srt(segments, ["How are you?", "I'm fine.", ...])
 - 音频指纹与清单生成
 - 导出到 剪映 / CapCut 草稿
 
+### 小说续写与 RAG 长期记忆
+
+`server/services/novel/` 提供小说续写核心服务：
+
+- `context_builder.py`：预算控制的上下文组装（大纲 / 前文摘要 / 人物 / 事件 / 世界观 / 伏笔）
+- `chapter_generator.py`：单章节版本生成，集成 RAG 记忆检索
+- `prompt_templates.py`：9 种小说体裁模板 + 6 种版本方向修饰符
+- `blueprint_generator.py`：从一句话前提生成全书蓝图（大纲树 + 人物 + 世界观）
+- `graph_extractor.py`：从已确认章节自动抽取人物关系和事件因果
+- `consistency_reviewer.py`：9 维一致性审稿（人物 / 世界观 / 时间线 / 因果 / 伏笔 / ...）
+- `generation_runner.py`：后台线程异步执行 + SSE 实时进度推送
+
+`server/services/memory/` 提供 RAG 长期记忆：
+
+- `retriever.py`：多路向量检索，余弦距离归一化 + 重要性 + 类型权重排序
+- `rag_chain.py`：检索 → prompt 组装 → LLM 生成 → 冲突警告注入
+- `vector_store.py`：ChromaDB 封装，按项目隔离 collection，线程安全缓存
+- `memory_writer.py`：记忆 CRUD + 向量索引 + 章节确认后自动抽取（结构化 JSON）
+- `conflict_detector.py`：生成前检测章节目标与已有设定的冲突
+- `workflow.py`：LangGraph 7 节点工作流（检索 → 冲突检测 → 起草 → 审稿 → 修改 → 抽取 → 持久化）
+- `chunker.py`：按中文标点边界切片，支持重叠窗口
+
+前端工作台（`NovelWorkspace.vue`）支持 4 种模式：
+
+- **写作**：三栏布局（大纲树 / Markdown 编辑器 / 生成面板 + 版本管理 + 上下文预览）
+- **图谱**：`@vue-flow/core` 画布，人物关系图 / 事件因果图，节点可拖拽布局
+- **审稿**：一致性评分 + 问题列表 + 修改建议
+- **记忆**：长期记忆管理 / RAG 检索预览 / 待确认 AI 抽取变更
+
 ### 双数据库
 
 - **SQLite**（`data.db`）：文字、文件夹、标签、视频模板、视频任务、视频资产、发现数据、自定义供应商
@@ -181,7 +219,7 @@ uv run pytest server/tests/ -v                     # 仅后端测试
 
 ## 主要依赖
 
-**Python**：Flask、Flask-SQLAlchemy、Flask-CORS、requests、deep-translator、moviepy、PyMySQL、python-dotenv
+**Python**：Flask、Flask-SQLAlchemy、Flask-CORS、requests、deep-translator、moviepy、PyMySQL、python-dotenv、LangChain、ChromaDB、LangGraph
 
 **前端**：Vue 3、Vite、Pinia、Vue Router、Ant Design Vue、Axios、`@vue-flow/core`
 
