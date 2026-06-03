@@ -1,11 +1,20 @@
 import os
 import re
+import sys
+import threading
 from pathlib import Path
 from flask import Blueprint, request, jsonify
 
 system_bp = Blueprint('system', __name__)
 
 _ENV_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env')
+
+
+def _restart_server():
+    """Restart the server process by re-exec-ing after a short delay."""
+    import time
+    time.sleep(1)
+    os.execv(sys.executable, [sys.executable] + sys.argv)
 
 
 def _parse_database_url(url):
@@ -130,6 +139,13 @@ def _mask_value(key, value):
             return '***'
         return value[:8] + '***'
     return value
+
+
+@system_bp.route('/api/system/restart', methods=['POST'])
+def restart_server():
+    """Restart the server process to apply new configuration."""
+    threading.Thread(target=_restart_server, daemon=True).start()
+    return jsonify({'message': '服务正在重启...'})
 
 
 @system_bp.route('/api/system/health', methods=['GET'])

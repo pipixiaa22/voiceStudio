@@ -159,6 +159,7 @@ export const systemApi = {
   checkTables: () => api.get('/system/config/tables'),
   createTables: () => api.post('/system/config/tables/create'),
   getDdl: () => api.get('/system/config/tables/ddl'),
+  restart: () => api.post('/system/restart'),
 }
 
 export const novelsApi = {

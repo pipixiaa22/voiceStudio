@@ -162,7 +162,10 @@
         <a-button type="primary" @click="handleSave" :loading="saving">
           保存配置
         </a-button>
-        <span class="hint">保存后需要重启服务生效</span>
+        <a-button v-if="saved" type="primary" danger @click="handleRestart" :loading="restarting">
+          立即重启服务
+        </a-button>
+        <span v-if="saved && !restarting" class="hint">配置已保存，重启后生效</span>
       </div>
     </a-spin>
   </div>
@@ -181,6 +184,8 @@ const testingDb = ref(false)
 const testingRedis = ref(false)
 const creatingTables = ref(false)
 const loadingDdl = ref(false)
+const restarting = ref(false)
+const saved = ref(false)
 const config = ref({})
 const testResult = reactive({ database: null, redis: null })
 const tableStatus = ref(null)
@@ -274,6 +279,7 @@ const handleSave = async () => {
 
     const { data } = await systemApi.updateConfig(payload)
     message.success(data.message || '已保存')
+    saved.value = true
   } catch (e) {
     message.error('保存失败: ' + (e.response?.data?.error || e.message))
   } finally {
@@ -352,8 +358,25 @@ const copyDdl = async () => {
   }
 }
 
+const handleRestart = async () => {
+  restarting.value = true
+  try {
+    await systemApi.restart()
+    message.success('服务正在重启，请稍候...')
+    // Poll health endpoint until server is back
+    setTimeout(() => {
+      window.location.reload()
+    }, 3000)
+  } catch {
+    // If request fails (server is restarting), just reload after delay
+    setTimeout(() => {
+      window.location.reload()
+    }, 3000)
+  }
+}
+
 watch(() => props.active, (val) => {
-  if (val && !config.value.database) loadConfig()
+  if (val) loadConfig()
 })
 </script>
 
