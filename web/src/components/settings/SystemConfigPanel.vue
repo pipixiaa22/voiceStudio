@@ -304,10 +304,10 @@ const handleTest = async (target) => {
     const { data } = await systemApi.testConfig(payload)
     testResult[target] = data[target]
 
-    // After successful database test, check tables
+    // After successful database test, check tables on the tested DB
     if (target === 'database' && data[target]?.ok) {
       try {
-        const { data: tables } = await systemApi.checkTables()
+        const { data: tables } = await systemApi.checkTables(db)
         tableStatus.value = tables
       } catch {
         // Table check is best-effort
@@ -324,10 +324,10 @@ const handleTest = async (target) => {
 const handleCreateTables = async () => {
   creatingTables.value = true
   try {
-    const { data } = await systemApi.createTables()
+    const { data } = await systemApi.createTables(db)
     message.success(data.message || '表已创建')
-    // Re-check tables
-    const { data: tables } = await systemApi.checkTables()
+    // Re-check tables on the target DB
+    const { data: tables } = await systemApi.checkTables(db)
     tableStatus.value = tables
   } catch (e) {
     message.error('创建失败: ' + (e.response?.data?.error || e.message))

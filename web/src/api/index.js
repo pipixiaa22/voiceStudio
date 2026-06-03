@@ -156,8 +156,8 @@ export const systemApi = {
   getConfig: () => api.get('/system/config'),
   updateConfig: (data) => api.put('/system/config', data),
   testConfig: (data) => api.post('/system/config/test', data),
-  checkTables: () => api.get('/system/config/tables'),
-  createTables: () => api.post('/system/config/tables/create'),
+  checkTables: (dbData) => api.post('/system/config/tables', dbData),
+  createTables: (dbData) => api.post('/system/config/tables/create', dbData),
   getDdl: () => api.get('/system/config/tables/ddl'),
   restart: () => api.post('/system/restart'),
 }

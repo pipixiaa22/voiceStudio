@@ -3,11 +3,29 @@ import re
 import sys
 import threading
 from pathlib import Path
-from flask import Blueprint, request, jsonify
+from urllib.parse import quote as url_quote
+from functools import wraps
+from flask import Blueprint, request, jsonify, abort
 
 system_bp = Blueprint('system', __name__)
 
 _ENV_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env')
+
+
+def _require_local(f):
+    """Decorator that restricts endpoints to localhost requests only."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        remote = request.remote_addr or ''
+        if remote not in ('127.0.0.1', '::1', 'localhost'):
+            # Also check X-Forwarded-For for proxied requests
+            forwarded = request.headers.get('X-Forwarded-For', '')
+            if forwarded:
+                remote = forwarded.split(',')[0].strip()
+            if remote not in ('127.0.0.1', '::1', 'localhost'):
+                abort(403)
+        return f(*args, **kwargs)
+    return wrapper
 
 
 def _restart_server():
@@ -36,7 +54,7 @@ def _parse_database_url(url):
 
 
 def _build_database_url(parts):
-    """Build a SQLAlchemy database URL from components."""
+    """Build a SQLAlchemy database URL from components with URL-safe credentials."""
     driver = parts.get('driver', 'mysql+pymysql')
     host = parts.get('host', '')
     port = parts.get('port', '3306')
@@ -46,7 +64,12 @@ def _build_database_url(parts):
     charset = parts.get('charset', 'utf8mb4')
     if not host or not database:
         return ''
-    auth = f'{user}:{password}' if password else user
+    safe_user = url_quote(user, safe='')
+    if password:
+        safe_pass = url_quote(password, safe='')
+        auth = f'{safe_user}:{safe_pass}'
+    else:
+        auth = safe_user
     return f'{driver}://{auth}@{host}:{port}/{database}?charset={charset}'
 
 
@@ -67,14 +90,18 @@ def _parse_redis_url(url):
 
 
 def _build_redis_url(parts):
-    """Build a Redis URL from components."""
+    """Build a Redis URL from components with URL-safe credentials."""
     host = parts.get('host', '')
     port = parts.get('port', '6379')
     password = parts.get('password', '')
     db = parts.get('db', '0')
     if not host:
         return ''
-    auth = f':{password}@' if password else ''
+    if password:
+        safe_pass = url_quote(password, safe='')
+        auth = f':{safe_pass}@'
+    else:
+        auth = ''
     return f'redis://{auth}{host}:{port}/{db}'
 
 
@@ -142,6 +169,7 @@ def _mask_value(key, value):
 
 
 @system_bp.route('/api/system/restart', methods=['POST'])
+@_require_local
 def restart_server():
     """Restart the server process to apply new configuration."""
     threading.Thread(target=_restart_server, daemon=True).start()
@@ -253,25 +281,34 @@ def get_config():
 
 
 @system_bp.route('/api/system/config', methods=['PUT'])
+@_require_local
 def update_config():
     data = request.get_json() or {}
     updates = {}
+    env = _read_env()
 
     # Database: construct URL from individual fields
     if 'database' in data:
         db = data['database']
         if db.get('host') and db.get('database'):
+            # Preserve existing password if user didn't provide one
+            if not db.get('password'):
+                existing = _parse_database_url(env.get('DATABASE_URL', ''))
+                db['password'] = existing.get('password', '')
             url = _build_database_url(db)
             if url:
                 updates['DATABASE_URL'] = url
         elif db.get('host') == '' and db.get('database') == '':
-            # User wants to switch to SQLite
             updates['DATABASE_URL'] = ''
 
     # Redis: construct URL from individual fields
     if 'redis' in data:
         rd = data['redis']
         if rd.get('host'):
+            # Preserve existing password if user didn't provide one
+            if not rd.get('password'):
+                existing = _parse_redis_url(env.get('REDIS_URL', ''))
+                rd['password'] = existing.get('password', '')
             url = _build_redis_url(rd)
             if url:
                 updates['REDIS_URL'] = url
@@ -367,14 +404,32 @@ _EXPECTED_TABLES = [
 ]
 
 
-@system_bp.route('/api/system/config/tables', methods=['GET'])
-def check_tables():
-    """Check which expected tables exist in the database."""
+def _get_target_engine(url=None):
+    """Get a SQLAlchemy engine for the given URL, or the current app engine."""
+    if url:
+        import sqlalchemy
+        return sqlalchemy.create_engine(url, connect_args={'connect_timeout': 5}), True
     from server.models.base import db
+    return db.engine, False
+
+
+@system_bp.route('/api/system/config/tables', methods=['GET', 'POST'])
+def check_tables():
+    """Check which expected tables exist in the database.
+
+    Accepts optional JSON body with database fields to check a specific DB.
+    Falls back to current app database if no target specified.
+    """
     import sqlalchemy
 
+    url = ''
+    if request.method == 'POST':
+        db_data = request.get_json(silent=True) or {}
+        if db_data.get('host') and db_data.get('database'):
+            url = _build_database_url(db_data)
+
+    engine, is_temp = _get_target_engine(url if url else None)
     try:
-        engine = db.engine
         inspector = sqlalchemy.inspect(engine)
         existing = set(inspector.get_table_names())
         missing = [t for t in _EXPECTED_TABLES if t not in existing]
@@ -387,27 +442,59 @@ def check_tables():
         })
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
+    finally:
+        if is_temp:
+            engine.dispose()
 
 
 @system_bp.route('/api/system/config/tables/create', methods=['POST'])
+@_require_local
 def create_tables():
-    """Auto-create all missing tables."""
+    """Auto-create all missing tables.
+
+    Accepts optional 'database' JSON body with individual fields to create
+    tables on a different database. Falls back to current app engine.
+    """
     from server.models.base import db
 
-    try:
-        db.create_all()
-        # Verify
+    db_data = request.get_json(silent=True) or {}
+    url = ''
+    if db_data.get('host') and db_data.get('database'):
+        url = _build_database_url(db_data)
+
+    if url:
+        # Create tables on the target database using SQLAlchemy metadata
         import sqlalchemy
-        inspector = sqlalchemy.inspect(db.engine)
-        existing = set(inspector.get_table_names())
-        created = [t for t in _EXPECTED_TABLES if t in existing]
-        return jsonify({
-            'ok': True,
-            'message': f'已创建 {len(created)} 张表',
-            'tables': created,
-        })
-    except Exception as e:
-        return jsonify({'ok': False, 'error': str(e)}), 500
+        engine = sqlalchemy.create_engine(url, connect_args={'connect_timeout': 5})
+        try:
+            db.Model.metadata.create_all(engine)
+            inspector = sqlalchemy.inspect(engine)
+            existing = set(inspector.get_table_names())
+            created = [t for t in _EXPECTED_TABLES if t in existing]
+            return jsonify({
+                'ok': True,
+                'message': f'已创建 {len(created)} 张表',
+                'tables': created,
+            })
+        except Exception as e:
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        finally:
+            engine.dispose()
+    else:
+        # Create on current app database
+        try:
+            db.create_all()
+            import sqlalchemy
+            inspector = sqlalchemy.inspect(db.engine)
+            existing = set(inspector.get_table_names())
+            created = [t for t in _EXPECTED_TABLES if t in existing]
+            return jsonify({
+                'ok': True,
+                'message': f'已创建 {len(created)} 张表',
+                'tables': created,
+            })
+        except Exception as e:
+            return jsonify({'ok': False, 'error': str(e)}), 500
 
 
 @system_bp.route('/api/system/config/tables/ddl', methods=['GET'])
