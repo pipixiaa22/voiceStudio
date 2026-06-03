@@ -26,7 +26,7 @@ def get_vector_store(project_id):
         if embeddings is None:
             return None
 
-        persist_dir = os.path.join(os.getcwd(), 'data', 'chromadb')
+        persist_dir = os.environ.get('CHROMADB_PERSIST_DIR') or os.path.join(os.getcwd(), 'data', 'chromadb')
         os.makedirs(persist_dir, exist_ok=True)
 
         from langchain_community.vectorstores import Chroma
