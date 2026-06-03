@@ -285,7 +285,6 @@ def test_config():
     results = {}
 
     if target == 'database':
-        # Build URL from individual fields if provided
         db_data = data.get('database', {})
         if db_data.get('host') and db_data.get('database'):
             url = _build_database_url(db_data)
@@ -337,3 +336,85 @@ def test_config():
                 results['redis'] = {'ok': False, 'message': str(e)}
 
     return jsonify(results)
+
+
+# All table names that should exist
+_EXPECTED_TABLES = [
+    'texts', 'tags', 'folders',
+    'video_templates', 'video_jobs', 'video_assets',
+    'voice_workflows', 'voice_workflow_segments', 'voice_workflow_edges',
+    'custom_providers',
+    'discovery_sources', 'discovery_queries', 'discovery_items', 'discovery_analyses',
+    'novel_projects', 'novel_outline_nodes', 'novel_chapters', 'novel_chapter_versions',
+    'novel_entities', 'novel_relations', 'novel_events', 'novel_event_relations',
+    'novel_graph_changes', 'novel_generations', 'novel_memories', 'novel_memory_changes',
+]
+
+
+@system_bp.route('/api/system/config/tables', methods=['GET'])
+def check_tables():
+    """Check which expected tables exist in the database."""
+    from server.models.base import db
+    import sqlalchemy
+
+    try:
+        engine = db.engine
+        inspector = sqlalchemy.inspect(engine)
+        existing = set(inspector.get_table_names())
+        missing = [t for t in _EXPECTED_TABLES if t not in existing]
+        return jsonify({
+            'ok': True,
+            'total': len(_EXPECTED_TABLES),
+            'existing': len(_EXPECTED_TABLES) - len(missing),
+            'missing': missing,
+            'all_exist': len(missing) == 0,
+        })
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+@system_bp.route('/api/system/config/tables/create', methods=['POST'])
+def create_tables():
+    """Auto-create all missing tables."""
+    from server.models.base import db
+
+    try:
+        db.create_all()
+        # Verify
+        import sqlalchemy
+        inspector = sqlalchemy.inspect(db.engine)
+        existing = set(inspector.get_table_names())
+        created = [t for t in _EXPECTED_TABLES if t in existing]
+        return jsonify({
+            'ok': True,
+            'message': f'已创建 {len(created)} 张表',
+            'tables': created,
+        })
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+@system_bp.route('/api/system/config/tables/ddl', methods=['GET'])
+def get_ddl():
+    """Generate DDL SQL for all expected tables."""
+    from server.models.base import db
+    import sqlalchemy
+
+    try:
+        engine = db.engine
+        # Use SQLAlchemy to generate DDL from metadata
+        metadata = db.Model.metadata
+        ddl_statements = []
+        for table_name in _EXPECTED_TABLES:
+            table = metadata.tables.get(table_name)
+            if table is not None:
+                ddl = sqlalchemy.schema.CreateTable(table).compile(engine)
+                ddl_statements.append(str(ddl).strip() + ';')
+
+        return jsonify({
+            'ok': True,
+            'ddl': '\n\n'.join(ddl_statements),
+            'table_count': len(ddl_statements),
+        })
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500

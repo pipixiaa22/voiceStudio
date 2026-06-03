@@ -51,6 +51,41 @@
           {{ testResult.database.message }}
         </a-tag>
         <span class="hint">全部留空则使用本地 SQLite</span>
+
+        <!-- Table status after successful test -->
+        <div v-if="tableStatus" class="table-status">
+          <a-alert
+            v-if="tableStatus.all_exist"
+            type="success"
+            show-icon
+            message="表结构完整"
+            :description="`全部 ${tableStatus.total} 张表已存在`"
+            style="margin-top: 12px"
+          />
+          <a-alert
+            v-else
+            type="warning"
+            show-icon
+            message="表结构不完整"
+            :description="`${tableStatus.existing}/${tableStatus.total} 张表已存在，缺少 ${tableStatus.missing.length} 张`"
+            style="margin-top: 12px"
+          />
+          <div v-if="!tableStatus.all_exist" class="table-actions">
+            <a-button size="small" type="primary" @click="handleCreateTables" :loading="creatingTables">
+              自动创建表结构
+            </a-button>
+            <a-button size="small" @click="handleShowDdl" :loading="loadingDdl">
+              查看 SQL 语句
+            </a-button>
+          </div>
+        </div>
+
+        <!-- DDL modal -->
+        <a-modal v-model:open="showDdlModal" title="建表 SQL" width="700px" :footer="null">
+          <p class="hint">复制以下 SQL 在数据库中手动执行：</p>
+          <a-textarea :value="ddlContent" :autoSize="{ minRows: 10, maxRows: 30 }" readonly style="font-family: monospace; font-size: 12px; margin-top: 8px;" />
+          <a-button size="small" style="margin-top: 8px" @click="copyDdl">复制到剪贴板</a-button>
+        </a-modal>
       </a-form>
 
       <!-- Redis -->
@@ -144,8 +179,13 @@ const loading = ref(false)
 const saving = ref(false)
 const testingDb = ref(false)
 const testingRedis = ref(false)
+const creatingTables = ref(false)
+const loadingDdl = ref(false)
 const config = ref({})
 const testResult = reactive({ database: null, redis: null })
+const tableStatus = ref(null)
+const showDdlModal = ref(false)
+const ddlContent = ref('')
 
 const db = reactive({
   driver: 'mysql+pymysql',
@@ -245,6 +285,7 @@ const handleTest = async (target) => {
   if (target === 'database') testingDb.value = true
   if (target === 'redis') testingRedis.value = true
   testResult[target] = null
+  if (target === 'database') tableStatus.value = null
 
   try {
     const payload = { target }
@@ -256,11 +297,58 @@ const handleTest = async (target) => {
     }
     const { data } = await systemApi.testConfig(payload)
     testResult[target] = data[target]
+
+    // After successful database test, check tables
+    if (target === 'database' && data[target]?.ok) {
+      try {
+        const { data: tables } = await systemApi.checkTables()
+        tableStatus.value = tables
+      } catch {
+        // Table check is best-effort
+      }
+    }
   } catch (e) {
     testResult[target] = { ok: false, message: '测试失败' }
   } finally {
     testingDb.value = false
     testingRedis.value = false
+  }
+}
+
+const handleCreateTables = async () => {
+  creatingTables.value = true
+  try {
+    const { data } = await systemApi.createTables()
+    message.success(data.message || '表已创建')
+    // Re-check tables
+    const { data: tables } = await systemApi.checkTables()
+    tableStatus.value = tables
+  } catch (e) {
+    message.error('创建失败: ' + (e.response?.data?.error || e.message))
+  } finally {
+    creatingTables.value = false
+  }
+}
+
+const handleShowDdl = async () => {
+  loadingDdl.value = true
+  try {
+    const { data } = await systemApi.getDdl()
+    ddlContent.value = data.ddl || '无法生成 DDL'
+    showDdlModal.value = true
+  } catch (e) {
+    message.error('获取 DDL 失败: ' + (e.response?.data?.error || e.message))
+  } finally {
+    loadingDdl.value = false
+  }
+}
+
+const copyDdl = async () => {
+  try {
+    await navigator.clipboard.writeText(ddlContent.value)
+    message.success('已复制到剪贴板')
+  } catch {
+    message.error('复制失败，请手动选择复制')
   }
 }
 
@@ -275,4 +363,6 @@ watch(() => props.active, (val) => {
 .save-section { margin-top: 16px; display: flex; align-items: center; gap: 12px; }
 :deep(.ant-divider) { margin: 16px 0 12px; font-size: 13px; }
 :deep(.ant-form-item) { margin-bottom: 12px; }
+.table-status { margin-top: 8px; }
+.table-actions { display: flex; gap: 8px; margin-top: 8px; }
 </style>

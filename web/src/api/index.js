@@ -156,6 +156,9 @@ export const systemApi = {
   getConfig: () => api.get('/system/config'),
   updateConfig: (data) => api.put('/system/config', data),
   testConfig: (data) => api.post('/system/config/test', data),
+  checkTables: () => api.get('/system/config/tables'),
+  createTables: () => api.post('/system/config/tables/create'),
+  getDdl: () => api.get('/system/config/tables/ddl'),
 }
 
 export const novelsApi = {
