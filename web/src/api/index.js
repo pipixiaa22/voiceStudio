@@ -153,6 +153,9 @@ export const voiceWorkflowsApi = {
 
 export const systemApi = {
   ls: (path) => api.get('/system/ls', { params: { path } }),
+  getConfig: () => api.get('/system/config'),
+  updateConfig: (data) => api.put('/system/config', data),
+  testConfig: (data) => api.post('/system/config/test', data),
 }
 
 export const novelsApi = {

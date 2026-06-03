@@ -31,6 +31,10 @@
           </a-form-item>
         </a-form>
       </a-tab-pane>
+
+      <a-tab-pane key="system" tab="系统配置">
+        <SystemConfigPanel :active="open && activeTab === 'system'" />
+      </a-tab-pane>
     </a-tabs>
 
     <template #footer>
@@ -44,6 +48,7 @@ import { ref, watch } from 'vue'
 import { useSettings } from '../../stores/settings'
 import DiscoverySourcePanel from './DiscoverySourcePanel.vue'
 import ProviderKeyPanel from './ProviderKeyPanel.vue'
+import SystemConfigPanel from './SystemConfigPanel.vue'
 import UsageModelPanel from './UsageModelPanel.vue'
 
 const props = defineProps({
