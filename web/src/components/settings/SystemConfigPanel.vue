@@ -8,13 +8,41 @@
           <a-tag :color="config.database?.effective_db === 'MySQL' ? 'green' : 'blue'">
             {{ config.database?.effective_db || 'SQLite' }}
           </a-tag>
+          <span v-if="config.database?.host" class="hint" style="display: inline; margin-left: 8px">
+            {{ config.database.host }}:{{ config.database.port }}/{{ config.database.database }}
+          </span>
         </a-form-item>
-        <a-form-item label="DATABASE_URL">
-          <a-input-password
-            v-model:value="form.DATABASE_URL"
-            placeholder="mysql+pymysql://user:pass@host:port/db?charset=utf8mb4"
-          />
-          <span class="hint">留空则使用本地 SQLite</span>
+        <a-row :gutter="12">
+          <a-col :span="12">
+            <a-form-item label="主机">
+              <a-input v-model:value="db.host" placeholder="127.0.0.1" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="端口">
+              <a-input v-model:value="db.port" placeholder="3306" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+        <a-row :gutter="12">
+          <a-col :span="12">
+            <a-form-item label="用户名">
+              <a-input v-model:value="db.user" placeholder="root" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="密码">
+              <a-input-password v-model:value="db.password" placeholder="留空则无密码" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+        <a-form-item label="数据库名">
+          <a-input v-model:value="db.database" placeholder="video_script" />
+        </a-form-item>
+        <a-form-item label="驱动">
+          <a-select v-model:value="db.driver" size="small" style="width: 200px">
+            <a-select-option value="mysql+pymysql">MySQL (pymysql)</a-select-option>
+          </a-select>
         </a-form-item>
         <a-button size="small" @click="handleTest('database')" :loading="testingDb">
           测试连接
@@ -22,6 +50,7 @@
         <a-tag v-if="testResult.database" :color="testResult.database.ok ? 'green' : 'red'" style="margin-left: 8px">
           {{ testResult.database.message }}
         </a-tag>
+        <span class="hint">全部留空则使用本地 SQLite</span>
       </a-form>
 
       <!-- Redis -->
@@ -29,17 +58,38 @@
       <a-form layout="vertical" size="small">
         <a-form-item label="当前状态">
           <a-tag :color="config.redis?.connected ? 'green' : 'orange'">
-            {{ config.redis?.connected ? '已连接' : (config.redis?.REDIS_URL ? '连接失败' : '未配置') }}
+            {{ config.redis?.connected ? '已连接' : (config.redis?.host ? '连接失败' : '未配置') }}
           </a-tag>
+          <span v-if="config.redis?.host" class="hint" style="display: inline; margin-left: 8px">
+            {{ config.redis.host }}:{{ config.redis.port }}
+          </span>
         </a-form-item>
-        <a-form-item label="REDIS_URL">
-          <a-input-password
-            v-model:value="form.REDIS_URL"
-            placeholder="redis://:password@host:port/db"
-          />
-        </a-form-item>
-        <a-form-item label="REDIS_KEY_PREFIX">
-          <a-input v-model:value="form.REDIS_KEY_PREFIX" placeholder="video-script" />
+        <a-row :gutter="12">
+          <a-col :span="12">
+            <a-form-item label="主机">
+              <a-input v-model:value="rd.host" placeholder="127.0.0.1" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="端口">
+              <a-input v-model:value="rd.port" placeholder="6379" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+        <a-row :gutter="12">
+          <a-col :span="12">
+            <a-form-item label="密码">
+              <a-input-password v-model:value="rd.password" placeholder="留空则无密码" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="数据库编号">
+              <a-input v-model:value="rd.db" placeholder="0" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+        <a-form-item label="KEY_PREFIX">
+          <a-input v-model:value="rd.REDIS_KEY_PREFIX" placeholder="video-script" />
         </a-form-item>
         <a-button size="small" @click="handleTest('redis')" :loading="testingRedis">
           测试连接
@@ -52,21 +102,21 @@
       <!-- RAG -->
       <a-divider>RAG 向量库</a-divider>
       <a-form layout="vertical" size="small">
-        <a-form-item label="CHROMADB_PERSIST_DIR">
+        <a-form-item label="向量库存储路径">
           <a-input
-            v-model:value="form.CHROMADB_PERSIST_DIR"
+            v-model:value="rag.CHROMADB_PERSIST_DIR"
             placeholder="留空则使用默认路径 data/chromadb"
           />
         </a-form-item>
         <a-form-item label="OPENAI_API_KEY (用于 Embedding)">
           <a-input-password
-            v-model:value="form.OPENAI_API_KEY"
+            v-model:value="rag.OPENAI_API_KEY"
             placeholder="sk-..."
           />
         </a-form-item>
         <a-form-item label="DEEPSEEK_API_KEY (备选 Embedding)">
           <a-input-password
-            v-model:value="form.DEEPSEEK_API_KEY"
+            v-model:value="rag.DEEPSEEK_API_KEY"
             placeholder="sk-..."
           />
         </a-form-item>
@@ -97,10 +147,24 @@ const testingRedis = ref(false)
 const config = ref({})
 const testResult = reactive({ database: null, redis: null })
 
-const form = reactive({
-  DATABASE_URL: '',
-  REDIS_URL: '',
+const db = reactive({
+  driver: 'mysql+pymysql',
+  host: '',
+  port: '3306',
+  user: '',
+  password: '',
+  database: '',
+})
+
+const rd = reactive({
+  host: '',
+  port: '6379',
+  password: '',
+  db: '0',
   REDIS_KEY_PREFIX: 'video-script',
+})
+
+const rag = reactive({
   CHROMADB_PERSIST_DIR: '',
   OPENAI_API_KEY: '',
   DEEPSEEK_API_KEY: '',
@@ -111,13 +175,26 @@ const loadConfig = async () => {
   try {
     const { data } = await systemApi.getConfig()
     config.value = data
-    // Populate form with masked values (user can overwrite)
-    form.DATABASE_URL = ''
-    form.REDIS_URL = ''
-    form.REDIS_KEY_PREFIX = data.redis?.REDIS_KEY_PREFIX || 'video-script'
-    form.CHROMADB_PERSIST_DIR = data.rag?.CHROMADB_PERSIST_DIR || ''
-    form.OPENAI_API_KEY = ''
-    form.DEEPSEEK_API_KEY = ''
+
+    // Populate database fields
+    db.host = data.database?.host || ''
+    db.port = data.database?.port || '3306'
+    db.user = data.database?.user || ''
+    db.password = ''
+    db.database = data.database?.database || ''
+    db.driver = data.database?.driver || 'mysql+pymysql'
+
+    // Populate redis fields
+    rd.host = data.redis?.host || ''
+    rd.port = data.redis?.port || '6379'
+    rd.password = ''
+    rd.db = data.redis?.db || '0'
+    rd.REDIS_KEY_PREFIX = data.redis?.REDIS_KEY_PREFIX || 'video-script'
+
+    // Populate rag fields
+    rag.CHROMADB_PERSIST_DIR = data.rag?.CHROMADB_PERSIST_DIR || ''
+    rag.OPENAI_API_KEY = ''
+    rag.DEEPSEEK_API_KEY = ''
   } finally {
     loading.value = false
   }
@@ -126,16 +203,36 @@ const loadConfig = async () => {
 const handleSave = async () => {
   saving.value = true
   try {
-    // Only send non-empty values
-    const updates = {}
-    for (const [key, val] of Object.entries(form)) {
-      if (val !== '') updates[key] = val
+    const payload = {}
+
+    // Database: only send if user filled in host+database
+    if (db.host && db.database) {
+      payload.database = { ...db }
+    } else if (!db.host && !db.database) {
+      // Explicitly clear to switch to SQLite
+      payload.database = { host: '', database: '' }
     }
-    if (Object.keys(updates).length === 0) {
+
+    // Redis: only send if user filled in host
+    if (rd.host) {
+      payload.redis = { ...rd }
+    }
+
+    // RAG: send non-empty values
+    const ragUpdates = {}
+    for (const [key, val] of Object.entries(rag)) {
+      if (val !== '') ragUpdates[key] = val
+    }
+    if (Object.keys(ragUpdates).length > 0) {
+      payload.rag = ragUpdates
+    }
+
+    if (Object.keys(payload).length === 0) {
       message.warning('没有需要保存的配置')
       return
     }
-    const { data } = await systemApi.updateConfig(updates)
+
+    const { data } = await systemApi.updateConfig(payload)
     message.success(data.message || '已保存')
   } catch (e) {
     message.error('保存失败: ' + (e.response?.data?.error || e.message))
@@ -151,11 +248,11 @@ const handleTest = async (target) => {
 
   try {
     const payload = { target }
-    if (target === 'database' && form.DATABASE_URL) {
-      payload.DATABASE_URL = form.DATABASE_URL
+    if (target === 'database') {
+      payload.database = { ...db }
     }
-    if (target === 'redis' && form.REDIS_URL) {
-      payload.REDIS_URL = form.REDIS_URL
+    if (target === 'redis') {
+      payload.redis = { ...rd }
     }
     const { data } = await systemApi.testConfig(payload)
     testResult[target] = data[target]

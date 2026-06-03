@@ -1,10 +1,72 @@
 import os
+import re
 from pathlib import Path
 from flask import Blueprint, request, jsonify
 
 system_bp = Blueprint('system', __name__)
 
 _ENV_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env')
+
+
+def _parse_database_url(url):
+    """Parse a SQLAlchemy database URL into components."""
+    if not url:
+        return {'driver': 'sqlite', 'host': '', 'port': '', 'user': '', 'password': '', 'database': ''}
+    # mysql+pymysql://user:pass@host:port/db?charset=utf8mb4
+    m = re.match(r'(\w+\+?\w*)://([^:]*):?([^@]*)@([^:/]+):?(\d*)/(\w+)', url)
+    if m:
+        return {
+            'driver': m.group(1),
+            'user': m.group(2),
+            'password': m.group(3),
+            'host': m.group(4),
+            'port': m.group(5) or '3306',
+            'database': m.group(6),
+        }
+    return {'driver': 'sqlite', 'host': '', 'port': '', 'user': '', 'password': '', 'database': ''}
+
+
+def _build_database_url(parts):
+    """Build a SQLAlchemy database URL from components."""
+    driver = parts.get('driver', 'mysql+pymysql')
+    host = parts.get('host', '')
+    port = parts.get('port', '3306')
+    user = parts.get('user', '')
+    password = parts.get('password', '')
+    database = parts.get('database', '')
+    charset = parts.get('charset', 'utf8mb4')
+    if not host or not database:
+        return ''
+    auth = f'{user}:{password}' if password else user
+    return f'{driver}://{auth}@{host}:{port}/{database}?charset={charset}'
+
+
+def _parse_redis_url(url):
+    """Parse a Redis URL into components."""
+    if not url:
+        return {'host': '', 'port': '6379', 'password': '', 'db': '0'}
+    # redis://:password@host:port/db
+    m = re.match(r'redis://:?([^@]*)@([^:/]+):?(\d*)/?(\d*)', url)
+    if m:
+        return {
+            'password': m.group(1),
+            'host': m.group(2),
+            'port': m.group(3) or '6379',
+            'db': m.group(4) or '0',
+        }
+    return {'host': '', 'port': '6379', 'password': '', 'db': '0'}
+
+
+def _build_redis_url(parts):
+    """Build a Redis URL from components."""
+    host = parts.get('host', '')
+    port = parts.get('port', '6379')
+    password = parts.get('password', '')
+    db = parts.get('db', '0')
+    if not host:
+        return ''
+    auth = f':{password}@' if password else ''
+    return f'redis://{auth}{host}:{port}/{db}'
 
 
 def _read_env():
@@ -138,14 +200,23 @@ def list_directories():
 @system_bp.route('/api/system/config', methods=['GET'])
 def get_config():
     env = _read_env()
-    # Get current effective values (env might override .env)
+
+    db_parts = _parse_database_url(env.get('DATABASE_URL', ''))
+    redis_parts = _parse_redis_url(env.get('REDIS_URL', ''))
+
     config = {
         'database': {
-            'DATABASE_URL': _mask_value('DATABASE_URL', env.get('DATABASE_URL', '')),
-            'effective_db': 'MySQL' if env.get('DATABASE_URL', '').startswith('mysql') else 'SQLite',
+            'driver': db_parts.get('driver', 'mysql+pymysql'),
+            'host': db_parts.get('host', ''),
+            'port': db_parts.get('port', ''),
+            'user': db_parts.get('user', ''),
+            'database': db_parts.get('database', ''),
+            'effective_db': 'MySQL' if db_parts.get('driver', '').startswith('mysql') else 'SQLite',
         },
         'redis': {
-            'REDIS_URL': _mask_value('REDIS_URL', env.get('REDIS_URL', '')),
+            'host': redis_parts.get('host', ''),
+            'port': redis_parts.get('port', '6379'),
+            'db': redis_parts.get('db', '0'),
             'REDIS_KEY_PREFIX': env.get('REDIS_KEY_PREFIX', 'video-script'),
         },
         'rag': {
@@ -168,8 +239,38 @@ def get_config():
 @system_bp.route('/api/system/config', methods=['PUT'])
 def update_config():
     data = request.get_json() or {}
-    allowed_keys = {'DATABASE_URL', 'REDIS_URL', 'REDIS_KEY_PREFIX', 'CHROMADB_PERSIST_DIR', 'OPENAI_API_KEY', 'DEEPSEEK_API_KEY'}
-    updates = {k: v for k, v in data.items() if k in allowed_keys}
+    updates = {}
+
+    # Database: construct URL from individual fields
+    if 'database' in data:
+        db = data['database']
+        if db.get('host') and db.get('database'):
+            url = _build_database_url(db)
+            if url:
+                updates['DATABASE_URL'] = url
+        elif db.get('host') == '' and db.get('database') == '':
+            # User wants to switch to SQLite
+            updates['DATABASE_URL'] = ''
+
+    # Redis: construct URL from individual fields
+    if 'redis' in data:
+        rd = data['redis']
+        if rd.get('host'):
+            url = _build_redis_url(rd)
+            if url:
+                updates['REDIS_URL'] = url
+        elif rd.get('host') == '':
+            updates['REDIS_URL'] = ''
+        if 'REDIS_KEY_PREFIX' in rd:
+            updates['REDIS_KEY_PREFIX'] = rd['REDIS_KEY_PREFIX']
+
+    # RAG: direct key-value
+    if 'rag' in data:
+        rag = data['rag']
+        for key in ('CHROMADB_PERSIST_DIR', 'OPENAI_API_KEY', 'DEEPSEEK_API_KEY'):
+            if key in rag:
+                updates[key] = rag[key]
+
     if not updates:
         return jsonify({'error': '无有效配置项'}), 400
 
@@ -184,9 +285,14 @@ def test_config():
     results = {}
 
     if target == 'database':
-        url = data.get('DATABASE_URL', '')
+        # Build URL from individual fields if provided
+        db_data = data.get('database', {})
+        if db_data.get('host') and db_data.get('database'):
+            url = _build_database_url(db_data)
+        else:
+            url = ''
+
         if not url:
-            # Test current
             from server.models.base import db
             try:
                 db.session.execute(db.text('SELECT 1'))
@@ -194,7 +300,6 @@ def test_config():
             except Exception as e:
                 results['database'] = {'ok': False, 'message': str(e)}
         else:
-            # Test provided URL
             import sqlalchemy
             try:
                 engine = sqlalchemy.create_engine(url, connect_args={'connect_timeout': 5})
@@ -206,9 +311,13 @@ def test_config():
                 results['database'] = {'ok': False, 'message': str(e)}
 
     elif target == 'redis':
-        url = data.get('REDIS_URL', '')
+        rd_data = data.get('redis', {})
+        if rd_data.get('host'):
+            url = _build_redis_url(rd_data)
+        else:
+            url = ''
+
         if not url:
-            # Test current
             try:
                 from server.services.redis_client import get_redis
                 r = get_redis()
@@ -219,7 +328,6 @@ def test_config():
             except Exception as e:
                 results['redis'] = {'ok': False, 'message': str(e)}
         else:
-            # Test provided URL
             import redis
             try:
                 r = redis.Redis.from_url(url, socket_connect_timeout=5, socket_timeout=5)
