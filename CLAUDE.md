@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SRT subtitle generator and video production tool for Chinese text. Converts Chinese text into timed SRT subtitle files with intelligent punctuation-based segmentation. Also supports TTS voice synthesis, video generation with templates/BGM/effects, voice profile management, content discovery, and a pluggable multi-provider model system.
+SRT subtitle generator and video production tool for Chinese text. Converts Chinese text into timed SRT subtitle files with intelligent punctuation-based segmentation. Also supports TTS voice synthesis, video generation with templates/BGM/effects, voice profile management, content discovery, a pluggable multi-provider model system, a novel continuation/authoring workbench with RAG long-term memory (LangChain + ChromaDB + LangGraph), and a node-based voice workflow editor.
 
 ## Commands
 
@@ -56,8 +56,8 @@ cd web && pnpm run build   # Production build → server/static/
 
 ### Flask Backend (`server/`)
 - `app.py` — Factory pattern, SQLite (`data.db`), registers blueprints, seeds video templates on startup
-- `models/` — SQLAlchemy models split by domain: `text.py` (Text, Tag), `folder.py` (Folder), `video.py` (VideoTemplate, VideoJob, VideoAsset), `provider.py` (CustomProvider), `discovery.py` (DiscoverySource, DiscoveryQuery, DiscoveryItem, DiscoveryAnalysis), `voice_workflow.py` (VoiceWorkflow, VoiceSegment)
-- `routes/` — Blueprints: texts, folders, tags, tts, video, voice_profiles, models, discovery, voice_workflows
+- `models/` — SQLAlchemy models split by domain: `text.py` (Text, Tag), `folder.py` (Folder), `video.py` (VideoTemplate, VideoJob, VideoAsset), `provider.py` (CustomProvider), `discovery.py` (DiscoverySource, DiscoveryQuery, DiscoveryItem, DiscoveryAnalysis), `voice_workflow.py` (VoiceWorkflow, VoiceSegment), `novel/` (Project, Outline, Chapter, Entity, Event, GraphChange, Memory)
+- `routes/` — Blueprints: texts, folders, tags, tts, video, voice_profiles, models, discovery, voice_workflows, `novels/` (projects, outline, chapters, entities, events, graph, memories)
 
 **Key backend patterns:**
 - TTS uses MiMo API (`api.xiaomimimo.com`). LLM uses MiMo Token Plan (`token-plan-cn.xiaomimimo.com/anthropic`).
@@ -96,6 +96,32 @@ Video templates define: aspect ratio, resolution, fps, visual effects (zoom/pan/
 - Audio pipeline: `audio_postprocess.py`, `audio_package.py`, `subtitle_timeline.py`
 - Export: `jianying_draft.py` (剪映 draft format), `capcut_package.py` (CapCut package)
 
+### Novel Continuation Workbench (`server/services/novel/`)
+Full novel authoring system with outline management, multi-version chapter generation, character/event graphs, and consistency review:
+- `context_builder.py` — Budget-controlled context assembly (outline, prior summaries, characters, events, world-building, foreshadowing)
+- `chapter_generator.py` — Single-chapter version generation with RAG memory retrieval
+- `prompt_templates.py` — 9 genre templates + 6 version direction modifiers
+- `blueprint_generator.py` — Generate full-book blueprint from a one-line premise (outline tree + characters + world)
+- `graph_extractor.py` — Auto-extract character relationships and event causality from confirmed chapters
+- `consistency_reviewer.py` — 9-dimension consistency review (character, world, timeline, causality, foreshadowing, etc.)
+- `generation_runner.py` — Background thread async execution + SSE real-time progress
+- Routes: `routes/novels/` — projects, outline, chapters, entities, events, graph, memories
+- Frontend: `NovelProjectList.vue`, `NovelWorkspace.vue` (4 modes: writing, graphs, review, memory)
+- Components: `novel/` — CharacterGraph, EventGraph, MemoryPanel, ConsistencyPanel, etc.
+- Store: `stores/novels.js`
+
+### RAG Long-Term Memory (`server/services/memory/`)
+LangChain + ChromaDB vector store with LangGraph workflow for persistent novel memory:
+- `vector_store.py` — ChromaDB wrapper, per-project collection isolation, thread-safe caching
+- `retriever.py` — Multi-path vector retrieval with cosine distance normalization + importance + type weighting
+- `rag_chain.py` — Retrieval → prompt assembly → LLM generation → conflict warning injection
+- `memory_writer.py` — Memory CRUD + vector indexing + auto-extraction from confirmed chapters (structured JSON)
+- `conflict_detector.py` — Detect conflicts between chapter goals and existing settings before generation
+- `workflow.py` — LangGraph 7-node pipeline: retrieve → conflict detect → draft → review → revise → extract → persist
+- `chunker.py` — Chinese punctuation boundary splitting with overlap windows
+- `embeddings.py` — Embedding model abstraction
+- `document_types.py` — Memory document type definitions
+
 ### TTS Adapters (`server/services/tts_adapters/`)
 Abstraction layer separating TTS provider logic from route code:
 - `base.py` — abstract adapter interface
@@ -107,10 +133,10 @@ Abstraction layer separating TTS provider logic from route code:
 - Vue 3 + Vite 8 + Pinia 3 + Ant Design Vue 4 + Axios
 - `@vue-flow/core` for node-based visual editors (voice workflow canvas)
 - Dev server proxies `/api/*` to Flask on port 5002. Build output → `server/static/`.
-- **Views:** TextList, TextEdit, Import, QuickGenerate, Discovery, VoiceWorkflowList, VoiceWorkflowView
-- **Component subdirectories:** `video/` (7-step wizard), `settings/` (model provider config), `voice-workflow/`, `discovery/`
-- **Stores:** texts, folders, tags, settings, modelSettings, discovery, voiceWorkflows
-- **API layer:** `web/src/api/index.js` — modules: textsApi, foldersApi, tagsApi, ttsApi, voiceProfilesApi, videoApi, modelProvidersApi, customProvidersApi, discoveryApi, voiceWorkflowsApi
+- **Views:** TextList, TextEdit, Import, QuickGenerate, Discovery, VoiceWorkflowList, VoiceWorkflowView, NovelProjectList, NovelWorkspace
+- **Component subdirectories:** `video/` (7-step wizard), `settings/` (model provider config), `voice-workflow/`, `discovery/`, `novel/` (CharacterGraph, EventGraph, MemoryPanel, ConsistencyPanel, etc.)
+- **Stores:** texts, folders, tags, settings, modelSettings, discovery, voiceWorkflows, novels
+- **API layer:** `web/src/api/index.js` — modules: textsApi, foldersApi, tagsApi, ttsApi, voiceProfilesApi, videoApi, modelProvidersApi, customProvidersApi, discoveryApi, voiceWorkflowsApi, novelsApi (60+ endpoints)
 
 ### Dual Database
 - **SQLite** (`data.db`): Texts, folders, tags, video templates, video jobs, video assets, discovery data, custom providers
@@ -125,7 +151,7 @@ Abstraction layer separating TTS provider logic from route code:
 
 ## Key Dependencies
 
-**Python:** Flask, Flask-SQLAlchemy, Flask-CORS, requests, deep-translator, moviepy, pymysql, python-dotenv, redis
+**Python:** Flask, Flask-SQLAlchemy, Flask-CORS, requests, deep-translator, moviepy, pymysql, python-dotenv, redis, langchain, langchain-openai, langchain-community, chromadb, langgraph
 **Frontend:** Vue 3, Vite, Pinia, Vue Router, Ant Design Vue, axios
 
 ## Environment

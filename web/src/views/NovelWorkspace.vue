@@ -59,18 +59,32 @@
       </div>
 
       <!-- Graph mode -->
-      <div v-else-if="store.activeMode === 'graph'" class="workspace-main">
-        <div class="workspace-graph">
-          <NovelCharacterGraph v-if="store.graphType === 'characters'" />
-          <NovelEventGraph v-else />
-        </div>
-        <div class="workspace-right">
-          <NovelEntityInspector v-if="store.selectedEntityId && store.graphType === 'characters'" />
-          <NovelRelationInspector v-else-if="store.selectedRelationId && store.graphType === 'characters'" />
-          <NovelEventInspector v-else-if="store.selectedEventId && store.graphType === 'events'" />
-          <div v-else class="inspector-empty">
-            <p>点击图谱节点查看属性</p>
-          </div>
+      <div v-else-if="store.activeMode === 'graph'" class="workspace-main workspace-graph-mode">
+        <GraphToolbar
+          v-model="store.graphView.query"
+          v-model:graphType="store.graphType"
+          v-model:mode="store.graphView.mode"
+          @search="handleGraphSearch"
+          @fit="handleGraphFit"
+          @save-layout="handleSaveGraphLayout"
+        />
+        <div class="workspace-graph-area">
+          <GraphFilters
+            :visible="showFilters"
+            :filters="store.graphView.filters"
+            :graphType="store.graphType"
+            @update:filters="store.setGraphViewFilters"
+          />
+          <NovelCharacterGraph v-if="store.graphType === 'characters'" ref="charGraphRef" />
+          <NovelEventGraph v-else ref="eventGraphRef" />
+          <GraphLegend :graphType="store.graphType" />
+          <GraphInspector
+            :node="inspectorNode"
+            :edge="inspectorEdge"
+            :graphType="store.graphType"
+            @focus="handleInspectorFocus"
+            @edit="handleInspectorEdit"
+          />
         </div>
       </div>
 
@@ -134,9 +148,10 @@ import NovelContextPanel from '../components/novel/NovelContextPanel.vue'
 import NovelReviewPanel from '../components/novel/NovelReviewPanel.vue'
 import NovelCharacterGraph from '../components/novel/NovelCharacterGraph.vue'
 import NovelEventGraph from '../components/novel/NovelEventGraph.vue'
-import NovelEntityInspector from '../components/novel/NovelEntityInspector.vue'
-import NovelRelationInspector from '../components/novel/NovelRelationInspector.vue'
-import NovelEventInspector from '../components/novel/NovelEventInspector.vue'
+import GraphToolbar from '../components/novel/GraphToolbar.vue'
+import GraphFilters from '../components/novel/GraphFilters.vue'
+import GraphLegend from '../components/novel/GraphLegend.vue'
+import GraphInspector from '../components/novel/GraphInspector.vue'
 import NovelExtractionReviewModal from '../components/novel/NovelExtractionReviewModal.vue'
 import NovelBlueprintWizard from '../components/novel/NovelBlueprintWizard.vue'
 import NovelMemoryPanel from '../components/novel/NovelMemoryPanel.vue'
@@ -147,6 +162,9 @@ const route = useRoute()
 const store = useNovelsStore()
 const loading = ref(true)
 const showBlueprintWizard = ref(false)
+const showFilters = ref(false)
+const charGraphRef = ref(null)
+const eventGraphRef = ref(null)
 
 onMounted(async () => {
   try {
@@ -208,6 +226,62 @@ const handleExtract = async () => {
     return
   }
   await store.startGeneration('extract', {})
+}
+
+// Graph mode handlers
+const inspectorNode = computed(() => {
+  if (!store.graphView.selectedId) return null
+  const [type, id] = store.graphView.selectedId.split(':')
+  if (type === 'entity') {
+    return store.entities.find(e => e.id === Number(id)) || null
+  }
+  if (type === 'event') {
+    return store.events.find(e => e.id === Number(id)) || null
+  }
+  return null
+})
+
+const inspectorEdge = computed(() => {
+  if (!store.graphView.selectedId) return null
+  const [type, id] = store.graphView.selectedId.split(':')
+  if (type === 'rel') {
+    return store.relations.find(r => r.id === Number(id)) || null
+  }
+  if (type === 'erel') {
+    return store.eventRelations.find(r => r.id === Number(id)) || null
+  }
+  return null
+})
+
+function handleGraphSearch(query) {
+  store.setGraphViewQuery(query)
+}
+
+function handleGraphFit() {
+  if (store.graphType === 'characters') {
+    charGraphRef.value?.fitAll()
+  } else {
+    eventGraphRef.value?.fitAll()
+  }
+}
+
+async function handleSaveGraphLayout() {
+  if (!store.currentProject) return
+  const ref = store.graphType === 'characters' ? charGraphRef.value : eventGraphRef.value
+  const positions = ref?.getPositions() || []
+  const entityPositions = store.graphType === 'characters' ? positions : []
+  const eventPositions = store.graphType === 'events' ? positions : []
+  await store.saveGraphLayout(store.currentProject.id, entityPositions, eventPositions)
+  message.success('布局已保存')
+}
+
+function handleInspectorFocus(nodeId) {
+  const canvasRef = store.graphType === 'characters' ? charGraphRef.value : eventGraphRef.value
+  canvasRef?.focusNode(nodeId)
+}
+
+function handleInspectorEdit(node) {
+  // TODO: open edit modal in edit mode
 }
 
 // Watch for chapter content changes to mark dirty (compare against last saved snapshot)
@@ -296,6 +370,14 @@ watch(
 }
 .workspace-graph {
   flex: 1;
+}
+.workspace-graph-mode {
+  flex-direction: column;
+}
+.workspace-graph-area {
+  flex: 1;
+  position: relative;
+  min-height: 0;
 }
 .workspace-bottom {
   display: flex;

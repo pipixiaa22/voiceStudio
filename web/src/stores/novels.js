@@ -1,6 +1,36 @@
 // web/src/stores/novels.js
 import { defineStore } from 'pinia'
 import { novelsApi } from '../api'
+import { useModelSettings } from './modelSettings'
+
+function getNovelModelConfig() {
+  const { resolveUsage } = useModelSettings()
+  const resolved = resolveUsage('script_polish') || resolveUsage('voice_prompt_polish')
+  if (resolved?.api_key) {
+    const mimoLlmKey = localStorage.getItem('mimo_llm_key') || ''
+    if (resolved.provider_key === 'mimo' && mimoLlmKey) {
+      return { ...resolved, api_key: mimoLlmKey }
+    }
+    return resolved
+  }
+
+  const fallbackKey = localStorage.getItem('mimo_llm_key') || localStorage.getItem('mimo_tts_key') || ''
+  if (!fallbackKey) return null
+  return {
+    provider_key: 'mimo',
+    model_key: 'mimo-v2.5-pro',
+    api_key: fallbackKey,
+  }
+}
+
+function withNovelModelConfig(params = {}) {
+  const modelConfig = getNovelModelConfig()
+  if (!modelConfig) return params
+  return {
+    ...params,
+    model_config: modelConfig,
+  }
+}
 
 export const useNovelsStore = defineStore('novels', {
   state: () => ({
@@ -55,6 +85,30 @@ export const useNovelsStore = defineStore('novels', {
     rightTab: 'generation', // 'generation' | 'versions' | 'context' | 'review'
     leftTab: 'outline', // 'outline' | 'chapters' | 'settings'
 
+    // Obsidian graph view state
+    graphView: {
+      mode: 'explore',        // 'explore' | 'edit'
+      query: '',
+      selectedId: null,        // namespaced: 'entity:12' or 'event:34'
+      hoveredId: null,
+      focusedId: null,
+      neighborIds: [],
+      filters: {
+        nodeTypes: [],         // ['character', 'location', 'item', 'faction']
+        edgeTypes: [],         // ['ally', 'enemy', 'mentor', ...]
+        importanceRange: [0, 10],
+        chapterRange: null,
+      },
+      layout: {
+        running: false,
+        pinned: {},            // { 'entity:12': { x, y } }
+        zoom: 1,
+        center: [0, 0],
+      },
+      stats: null,
+      legend: null,
+    },
+
     // Save state
     saving: false,
     dirty: false,
@@ -96,6 +150,11 @@ export const useNovelsStore = defineStore('novels', {
 
     // --- Workspace loading ---
     async loadWorkspace(projectId) {
+      if (this.generationEventSource) {
+        this.generationEventSource.close()
+        this.generationEventSource = null
+      }
+      this.generation = null
       const { data } = await novelsApi.getProject(projectId)
       this.currentProject = data
       await Promise.all([
@@ -262,18 +321,19 @@ export const useNovelsStore = defineStore('novels', {
       if (type !== 'blueprint') {
         await this.saveIfDirty()
       }
+      const requestParams = withNovelModelConfig(params)
       this.generation = { status: 'pending', progress: 0 }
       this.rightTab = 'generation'
 
       let response
       if (type === 'blueprint') {
-        response = await novelsApi.generateBlueprint(this.currentProject.id, params)
+        response = await novelsApi.generateBlueprint(this.currentProject.id, requestParams)
       } else if (type === 'chapter_version') {
-        response = await novelsApi.generateVersions(this.currentProject.id, this.currentChapter.id, params)
+        response = await novelsApi.generateVersions(this.currentProject.id, this.currentChapter.id, requestParams)
       } else if (type === 'extract') {
-        response = await novelsApi.extractGraph(this.currentProject.id, this.currentChapter.id, params)
+        response = await novelsApi.extractGraph(this.currentProject.id, this.currentChapter.id, requestParams)
       } else if (type === 'review') {
-        response = await novelsApi.reviewChapter(this.currentProject.id, this.currentChapter.id, params)
+        response = await novelsApi.reviewChapter(this.currentProject.id, this.currentChapter.id, requestParams)
       }
 
       const gen = response.data
@@ -300,6 +360,31 @@ export const useNovelsStore = defineStore('novels', {
         if (this.generation.status === 'completed') {
           await this.handleGenerationComplete()
         }
+      })
+
+      es.addEventListener('completed', async (e) => {
+        this.generation = JSON.parse(e.data)
+        es.close()
+        this.generationEventSource = null
+        await this.handleGenerationComplete()
+      })
+
+      es.addEventListener('failed', (e) => {
+        this.generation = JSON.parse(e.data)
+        es.close()
+        this.generationEventSource = null
+      })
+
+      es.addEventListener('error', () => {
+        if (this.generation?.status === 'pending' || this.generation?.status === 'running') {
+          this.generation = {
+            ...this.generation,
+            status: 'failed',
+            error: '生成连接中断，请重新发起。',
+          }
+        }
+        es.close()
+        this.generationEventSource = null
       })
     },
 
@@ -429,6 +514,52 @@ export const useNovelsStore = defineStore('novels', {
       await novelsApi.updateGraphLayout(pid, { entity_positions: entityPositions, event_positions: eventPositions })
     },
 
+    // --- Graph View (Obsidian) ---
+    setGraphViewMode(mode) {
+      this.graphView.mode = mode
+    },
+    setGraphViewQuery(query) {
+      this.graphView.query = query
+    },
+    setGraphViewSelected(id) {
+      this.graphView.selectedId = id
+    },
+    setGraphViewHovered(id) {
+      this.graphView.hoveredId = id
+    },
+    setGraphViewFocused(id) {
+      this.graphView.focusedId = id
+    },
+    setGraphViewNeighborIds(ids) {
+      this.graphView.neighborIds = ids
+    },
+    setGraphViewFilters(filters) {
+      this.graphView.filters = { ...this.graphView.filters, ...filters }
+    },
+    setGraphViewPinned(id, pos) {
+      if (pos) {
+        this.graphView.layout.pinned[id] = pos
+      } else {
+        delete this.graphView.layout.pinned[id]
+      }
+    },
+    setGraphViewZoom(zoom) {
+      this.graphView.layout.zoom = zoom
+    },
+    setGraphViewStats(stats) {
+      this.graphView.stats = stats
+    },
+    setGraphViewLegend(legend) {
+      this.graphView.legend = legend
+    },
+    resetGraphView() {
+      this.graphView.selectedId = null
+      this.graphView.hoveredId = null
+      this.graphView.focusedId = null
+      this.graphView.neighborIds = []
+      this.graphView.query = ''
+    },
+
     // --- Graph Changes ---
     async acceptGraphChange(pid, gid) {
       const change = this.graphChanges.find(c => c.id === gid)
@@ -519,6 +650,7 @@ export const useNovelsStore = defineStore('novels', {
       this.events = []
       this.eventRelations = []
       this.graphChanges = []
+      this.resetGraphView()
       this.memories = []
       this.memoryChanges = []
       this.memorySearchResults = []

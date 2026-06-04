@@ -1,40 +1,31 @@
 <template>
   <div class="novel-event-graph">
-    <div class="graph-toolbar">
-      <a-button size="small" @click="handleAddEvent">新增事件</a-button>
-      <a-button size="small" @click="handleSaveLayout">保存布局</a-button>
-    </div>
-    <VueFlow
-      :nodes="flowNodes"
-      :edges="flowEdges"
-      fit-view-on-init
-      @nodes-change="handleNodesChange"
-      @node-click="handleNodeClick"
-      @edge-click="handleEdgeClick"
-    >
-      <template #node-event="nodeProps">
-        <div class="event-node" :class="[nodeProps.data.event_type, { selected: nodeProps.id == store.selectedEventId }]">
-          <strong>{{ nodeProps.data.title }}</strong>
-          <span>{{ nodeProps.data.event_type }}</span>
-        </div>
-      </template>
-      <Background />
-      <Controls />
-    </VueFlow>
+    <ObsidianGraphCanvas
+      ref="canvasRef"
+      :nodes="graphNodes"
+      :edges="graphEdges"
+      graphType="events"
+      :selectedId="store.graphView.selectedId"
+      :hoveredId="store.graphView.hoveredId"
+      :query="store.graphView.query"
+      :mode="store.graphView.mode"
+      @select="handleSelect"
+      @hover="handleHover"
+      @unhover="handleUnhover"
+      @dblclick="handleDblClick"
+      @drag-end="handleDragEnd"
+      @canvas-click="handleCanvasClick"
+    />
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
-import { VueFlow } from '@vue-flow/core'
-import { Background } from '@vue-flow/background'
-import { Controls } from '@vue-flow/controls'
-import '@vue-flow/core/dist/style.css'
-import '@vue-flow/core/dist/theme-default.css'
-import '@vue-flow/controls/dist/style.css'
+import { computed, onMounted, ref } from 'vue'
 import { useNovelsStore } from '../../stores/novels'
+import ObsidianGraphCanvas from './ObsidianGraphCanvas.vue'
 
 const store = useNovelsStore()
+const canvasRef = ref(null)
 
 onMounted(() => {
   if (store.currentProject) {
@@ -42,66 +33,85 @@ onMounted(() => {
   }
 })
 
-const flowNodes = computed(() =>
+// Map events to graph nodes with namespaced IDs
+const graphNodes = computed(() =>
   store.events.map(e => ({
-    id: String(e.id),
-    type: 'event',
-    position: { x: e.x ?? e.node_x ?? 0, y: e.y ?? e.node_y ?? 0 },
-    data: { title: e.title, event_type: e.event_type, summary: e.summary },
+    id: `event:${e.id}`,
+    _rawId: e.id,
+    name: e.title,
+    title: e.title,
+    type: e.event_type || 'event',
+    importance: 5,
+    summary: e.summary,
+    event_type: e.event_type,
+    timeline_order: e.timeline_order || 0,
+    chapter_id: e.chapter_id,
+    x: e.x ?? e.node_x ?? 0,
+    y: e.y ?? e.node_y ?? 0,
   }))
 )
 
-const edgeColors = {
-  causes: '#52c41a', drives: '#1890ff', blocks: '#ff4d4f',
-  reverses: '#fa8c16', reveals: '#722ed1', escalates: '#eb2f96',
-}
-const flowEdges = computed(() =>
+// Map event-relations to graph edges with namespaced IDs
+const graphEdges = computed(() =>
   store.eventRelations.map(r => ({
-    id: String(r.id),
-    source: String(r.source || r.source_event_id),
-    target: String(r.target || r.target_event_id),
+    id: `erel:${r.id}`,
+    source: `event:${r.source || r.source_event_id}`,
+    target: `event:${r.target || r.target_event_id}`,
+    type: r.type || r.relation_type,
     label: r.label || r.type || r.relation_type,
-    style: { stroke: edgeColors[r.type || r.relation_type] || '#999' },
+    description: r.description,
+    confidence: r.confidence || 1.0,
   }))
 )
 
-const handleNodesChange = (changes) => {
-  for (const c of changes) {
-    if (c.type === 'position' && c.position) {
-      const ev = store.events.find(e => String(e.id) === c.id)
-      if (ev) { ev.node_x = c.position.x; ev.node_y = c.position.y }
-    }
+function handleSelect(d) {
+  if (d) {
+    store.graphView.selectedId = d.id
+    store.selectedEventId = d._rawId
+    store.selectedEntityId = null
+    store.selectedRelationId = null
+    const neighbors = canvasRef.value?.highlightNode(d.id)
+    store.graphView.neighborIds = neighbors || []
   }
 }
 
-const handleNodeClick = ({ node }) => {
-  store.selectedEventId = Number(node.id)
-  store.selectedEntityId = null
-  store.selectedRelationId = null
+function handleHover(d) {
+  store.graphView.hoveredId = d.id
 }
 
-const handleEdgeClick = ({ edge }) => {
-  // Could show edge inspector
+function handleUnhover() {
+  store.graphView.hoveredId = null
 }
 
-const handleAddEvent = async () => {
-  await store.createEvent(store.currentProject.id, { title: '新事件', event_type: 'event' })
+function handleDblClick(d) {
+  canvasRef.value?.focusNode(d.id)
 }
 
-const handleSaveLayout = async () => {
-  const positions = store.events.map(e => ({ id: e.id, x: e.x ?? e.node_x ?? 0, y: e.y ?? e.node_y ?? 0 }))
-  await store.saveGraphLayout(store.currentProject.id, [], positions)
+function handleDragEnd(d) {
+  const event = store.events.find(e => `event:${e.id}` === d.id)
+  if (event) {
+    event.node_x = d.x
+    event.node_y = d.y
+    store.setGraphViewPinned(d.id, { x: d.x, y: d.y })
+  }
 }
+
+function handleCanvasClick() {
+  store.graphView.selectedId = null
+  store.graphView.neighborIds = []
+  store.selectedEventId = null
+  canvasRef.value?.clearHighlight()
+}
+
+defineExpose({
+  fitAll: () => canvasRef.value?.fitAll(),
+  getPositions: () => canvasRef.value?.getPositions() || [],
+})
 </script>
 
 <style scoped>
-.novel-event-graph { height: 100%; display: flex; flex-direction: column; }
-.graph-toolbar { display: flex; gap: 4px; padding: 8px; border-bottom: 1px solid var(--surface-border); }
-.event-node {
-  background: white; border: 2px solid #1890ff; border-radius: 8px;
-  padding: 8px 12px; min-width: 140px; text-align: center;
+.novel-event-graph {
+  width: 100%;
+  height: 100%;
 }
-.event-node.selected { border-color: #ff4d4f; }
-.event-node strong { display: block; font-size: 13px; }
-.event-node span { font-size: 11px; color: #999; }
 </style>
