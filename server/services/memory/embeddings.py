@@ -1,4 +1,10 @@
-"""Embedding model wrapper for memory indexing and retrieval."""
+"""Embedding model wrapper for memory indexing and retrieval.
+
+Supports three providers (checked in order):
+1. DASHSCOPE_API_KEY — Qwen text-embedding-v3 via DashScope OpenAI-compatible API
+2. OPENAI_API_KEY — OpenAI embeddings
+3. DEEPSEEK_API_KEY — DeepSeek embeddings (fallback)
+"""
 
 import os
 import logging
@@ -14,8 +20,9 @@ def get_embeddings():
     """Get or create the embedding model instance.
 
     Uses OpenAI-compatible embedding API. Checks for API key in order:
-    1. OPENAI_API_KEY (for OpenAI embeddings)
-    2. DEEPSEEK_API_KEY (for DeepSeek embeddings, if supported)
+    1. DASHSCOPE_API_KEY (for Qwen embeddings via DashScope)
+    2. OPENAI_API_KEY (for OpenAI embeddings)
+    3. DEEPSEEK_API_KEY (for DeepSeek embeddings, if supported)
 
     Thread-safe: uses a lock to prevent duplicate instance creation.
     """
@@ -29,20 +36,38 @@ def get_embeddings():
 
         from langchain_openai import OpenAIEmbeddings
 
-        api_key = os.environ.get('OPENAI_API_KEY') or os.environ.get('DEEPSEEK_API_KEY')
-        base_url = None
+        dashscope_key = os.environ.get('DASHSCOPE_API_KEY')
+        openai_key = os.environ.get('OPENAI_API_KEY')
+        deepseek_key = os.environ.get('DEEPSEEK_API_KEY')
 
-        if os.environ.get('DEEPSEEK_API_KEY') and not os.environ.get('OPENAI_API_KEY'):
+        api_key = None
+        base_url = None
+        model = None
+
+        if dashscope_key:
+            api_key = dashscope_key
+            base_url = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+            model = 'text-embedding-v3'
+            logger.info('Using Qwen embeddings via DashScope (text-embedding-v3)')
+        elif openai_key:
+            api_key = openai_key
+            logger.info('Using OpenAI embeddings')
+        elif deepseek_key:
+            api_key = deepseek_key
             base_url = 'https://api.deepseek.com/v1'
+            logger.info('Using DeepSeek embeddings')
 
         if not api_key:
-            logger.warning('No embedding API key found. Memory indexing will not work.')
+            logger.warning('No embedding API key found (DASHSCOPE_API_KEY, OPENAI_API_KEY, or DEEPSEEK_API_KEY). Memory indexing will not work.')
             return None
 
-        _embeddings = OpenAIEmbeddings(
-            api_key=api_key,
-            base_url=base_url,
-        )
+        kwargs = {'api_key': api_key}
+        if base_url:
+            kwargs['base_url'] = base_url
+        if model:
+            kwargs['model'] = model
+
+        _embeddings = OpenAIEmbeddings(**kwargs)
         return _embeddings
 
 
