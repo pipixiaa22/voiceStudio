@@ -5,7 +5,7 @@
       <a-divider>数据库连接</a-divider>
       <a-form layout="vertical" size="small">
         <a-form-item label="当前状态">
-          <a-tag :color="config.database?.effective_db === 'MySQL' ? 'green' : 'blue'">
+          <a-tag :color="config.database?.effective_db === 'MySQL' ? 'green' : config.database?.effective_db === 'PostgreSQL' ? 'purple' : 'blue'">
             {{ config.database?.effective_db || 'SQLite' }}
           </a-tag>
           <span v-if="config.database?.host" class="hint" style="display: inline; margin-left: 8px">
@@ -20,7 +20,7 @@
           </a-col>
           <a-col :span="12">
             <a-form-item label="端口">
-              <a-input v-model:value="db.port" placeholder="3306" />
+              <a-input v-model:value="db.port" :placeholder="db.driver.startsWith('postgres') ? '5432' : '3306'" />
             </a-form-item>
           </a-col>
         </a-row>
@@ -40,8 +40,9 @@
           <a-input v-model:value="db.database" placeholder="video_script" />
         </a-form-item>
         <a-form-item label="驱动">
-          <a-select v-model:value="db.driver" size="small" style="width: 200px">
+          <a-select v-model:value="db.driver" size="small" style="width: 200px" @change="onDriverChange">
             <a-select-option value="mysql+pymysql">MySQL (pymysql)</a-select-option>
+            <a-select-option value="postgresql+psycopg2">PostgreSQL (psycopg2)</a-select-option>
           </a-select>
         </a-form-item>
         <a-button size="small" @click="handleTest('database')" :loading="testingDb">
@@ -137,11 +138,24 @@
       <!-- RAG -->
       <a-divider>RAG 向量库</a-divider>
       <a-form layout="vertical" size="small">
-        <a-form-item label="向量库存储路径">
-          <a-input
-            v-model:value="rag.CHROMADB_PERSIST_DIR"
-            placeholder="留空则使用默认路径 data/chromadb"
+        <a-form-item label="向量存储后端">
+          <a-tag v-if="rag.vector_backend === 'pgvector'" color="purple">
+            PostgreSQL pgvector (自动)
+          </a-tag>
+          <template v-else>
+            <a-input
+              v-model:value="rag.CHROMADB_PERSIST_DIR"
+              placeholder="留空则使用默认路径 data/chromadb"
+            />
+            <span class="hint">使用 ChromaDB 本地存储。切换到 PostgreSQL 驱动可自动启用 pgvector。</span>
+          </template>
+        </a-form-item>
+        <a-form-item label="DASHSCOPE_API_KEY (千问 Embedding)">
+          <a-input-password
+            v-model:value="rag.DASHSCOPE_API_KEY"
+            placeholder="sk-... DashScope API Key"
           />
+          <span class="hint">千问 text-embedding-v3，OpenAI 兼容模式。优先级最高。</span>
         </a-form-item>
         <a-form-item label="OPENAI_API_KEY (用于 Embedding)">
           <a-input-password
@@ -162,10 +176,30 @@
         <a-button type="primary" @click="handleSave" :loading="saving">
           保存配置
         </a-button>
-        <a-button v-if="saved" type="primary" danger @click="handleRestart" :loading="restarting">
-          立即重启服务
+      </div>
+
+      <!-- Effects after save -->
+      <a-alert
+        v-if="configEffects.length"
+        type="info"
+        show-icon
+        message="配置保存结果"
+        style="margin-top: 12px"
+      >
+        <template #description>
+          <div v-for="effect in configEffects" :key="effect.key" style="margin-bottom: 4px">
+            <a-tag :color="effect.status === 'restart_required' ? 'orange' : 'green'" size="small">
+              {{ effect.status === 'restart_required' ? '需重启' : '已生效' }}
+            </a-tag>
+            <span style="font-size: 12px">{{ effect.key }}：{{ effect.message }}</span>
+          </div>
+        </template>
+      </a-alert>
+
+      <div v-if="restartRequired" style="margin-top: 12px">
+        <a-button type="primary" danger @click="handleRestart" :loading="restarting">
+          重启以应用剩余配置
         </a-button>
-        <span v-if="saved && !restarting" class="hint">配置已保存，重启后生效</span>
       </div>
     </a-spin>
   </div>
@@ -186,6 +220,8 @@ const creatingTables = ref(false)
 const loadingDdl = ref(false)
 const restarting = ref(false)
 const saved = ref(false)
+const configEffects = ref([])
+const restartRequired = ref(false)
 const config = ref({})
 const testResult = reactive({ database: null, redis: null })
 const tableStatus = ref(null)
@@ -210,9 +246,11 @@ const rd = reactive({
 })
 
 const rag = reactive({
+  vector_backend: 'chromadb',
   CHROMADB_PERSIST_DIR: '',
   OPENAI_API_KEY: '',
   DEEPSEEK_API_KEY: '',
+  DASHSCOPE_API_KEY: '',
 })
 
 const loadConfig = async () => {
@@ -237,6 +275,7 @@ const loadConfig = async () => {
     rd.REDIS_KEY_PREFIX = data.redis?.REDIS_KEY_PREFIX || 'video-script'
 
     // Populate rag fields
+    rag.vector_backend = data.rag?.vector_backend || 'chromadb'
     rag.CHROMADB_PERSIST_DIR = data.rag?.CHROMADB_PERSIST_DIR || ''
     rag.OPENAI_API_KEY = ''
     rag.DEEPSEEK_API_KEY = ''
@@ -244,6 +283,14 @@ const loadConfig = async () => {
     message.error('加载系统配置失败: ' + (e.response?.data?.error || e.message))
   } finally {
     loading.value = false
+  }
+}
+
+const onDriverChange = (driver) => {
+  if (driver.startsWith('postgres')) {
+    db.port = db.port === '3306' ? '5432' : db.port
+  } else {
+    db.port = db.port === '5432' ? '3306' : db.port
   }
 }
 
@@ -280,8 +327,15 @@ const handleSave = async () => {
     }
 
     const { data } = await systemApi.updateConfig(payload)
-    message.success(data.message || '已保存')
+    configEffects.value = data.effects || []
+    restartRequired.value = !!data.restart_required
     saved.value = true
+
+    if (restartRequired.value) {
+      message.warning('部分配置已保存，需重启后生效')
+    } else {
+      message.success(data.message || '配置已保存并已热更新')
+    }
   } catch (e) {
     message.error('保存失败: ' + (e.response?.data?.error || e.message))
   } finally {

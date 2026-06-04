@@ -10,6 +10,19 @@ _unavailable_until = 0.0
 _RETRY_INTERVAL = 60  # seconds before retrying a failed connection
 
 
+def reset_redis_client():
+    """Close and clear the cached Redis client so the next get_redis() reconnects."""
+    global _client, _unavailable_until
+    if _client is not None:
+        try:
+            _client.close()
+        except Exception:
+            pass
+    _client = None
+    _unavailable_until = 0.0
+    logger.info('Redis client reset')
+
+
 def get_redis():
     """Return a Redis client, or None if REDIS_URL is not configured / unreachable.
 

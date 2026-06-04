@@ -46,12 +46,13 @@ const nodeTypeOptions = [
 ]
 
 const characterEdgeOptions = [
-  { label: '师徒', value: 'mentor' },
-  { label: '同盟', value: 'ally' },
-  { label: '敌对', value: 'enemy' },
-  { label: '亲属', value: 'family' },
-  { label: '恋人', value: 'lover' },
-  { label: '背叛', value: 'betrayal' },
+  { label: '师徒', value: '师徒' },
+  { label: '同盟', value: '同盟' },
+  { label: '敌对', value: '敌对' },
+  { label: '亲属', value: '亲属' },
+  { label: '恋人', value: '恋人' },
+  { label: '背叛', value: '背叛' },
+  { label: '其他', value: '其他' },
 ]
 
 const eventEdgeOptions = [

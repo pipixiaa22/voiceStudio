@@ -42,12 +42,13 @@ const NODE_LABELS = {
 }
 
 const CHARACTER_EDGE_LABELS = {
-  mentor: '师徒',
-  ally: '同盟',
-  enemy: '敌对',
-  family: '亲属',
-  lover: '恋人',
-  betrayal: '背叛',
+  '师徒': '师徒',
+  '同盟': '同盟',
+  '敌对': '敌对',
+  '亲属': '亲属',
+  '恋人': '恋人',
+  '背叛': '背叛',
+  '其他': '其他',
 }
 
 const EVENT_EDGE_LABELS = {

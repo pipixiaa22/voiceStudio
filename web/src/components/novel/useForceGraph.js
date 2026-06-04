@@ -15,12 +15,15 @@ export const NODE_TYPE_COLORS = {
 }
 
 export const EDGE_TYPE_COLORS = {
-  mentor: '#58a6ff',
-  ally: '#7ee787',
-  enemy: '#f85149',
-  family: '#d2a8ff',
-  lover: '#f778ba',
-  betrayal: '#f0883e',
+  // Character relation types (Chinese, matching DB data)
+  '师徒': '#58a6ff',
+  '同盟': '#7ee787',
+  '敌对': '#f85149',
+  '亲属': '#d2a8ff',
+  '恋人': '#f778ba',
+  '背叛': '#f0883e',
+  '其他': '#8b949e',
+  // Event relation types (English, matching DB data)
   causes: '#7ee787',
   drives: '#58a6ff',
   blocks: '#f85149',
@@ -52,6 +55,7 @@ export function useForceGraph(options = {}) {
 
   let svgEl = null
   let gEdges = null
+  let gEdgeHits = null
   let gNodes = null
   let gLabels = null
   let zoomBehavior = null
@@ -100,8 +104,9 @@ export function useForceGraph(options = {}) {
     feMerge.append('feMergeNode').attr('in', 'coloredBlur')
     feMerge.append('feMergeNode').attr('in', 'SourceGraphic')
 
-    // Groups
+    // Groups (order matters: edges behind nodes, hit-areas in front for click targets)
     gEdges = svg.append('g').attr('class', 'graph-edges')
+    gEdgeHits = svg.append('g').attr('class', 'graph-edge-hits')
     gNodes = svg.append('g').attr('class', 'graph-nodes')
     gLabels = svg.append('g').attr('class', 'graph-labels')
 
@@ -112,6 +117,7 @@ export function useForceGraph(options = {}) {
         const t = event.transform
         zoomTransform.value = { x: t.x, y: t.y, k: t.k }
         gEdges.attr('transform', t)
+        gEdgeHits.attr('transform', t)
         gNodes.attr('transform', t)
         gLabels.attr('transform', t)
       })
@@ -172,14 +178,28 @@ export function useForceGraph(options = {}) {
   }
 
   function render(dragBehavior) {
-    // Edges
-    const edgeSel = gEdges.selectAll('line')
+    // Visible edges (use class selector to avoid collision with hit-area lines)
+    const edgeSel = gEdges.selectAll('.edge-line')
       .data(_edges, d => d.id)
 
     edgeSel.exit().remove()
 
-    // Invisible hit area for easier clicking
-    const edgeHitSel = gEdges.selectAll('.edge-hit')
+    const edgeEnter = edgeSel.enter().append('line')
+      .attr('class', 'edge-line')
+      .attr('stroke', d => getEdgeColor(d.type || d.relation_type))
+      .attr('stroke-width', 1)
+      .attr('stroke-opacity', 0.4)
+      .attr('pointer-events', 'none')
+      .attr('marker-end', d => `url(#arrow-${d.type || d.relation_type || 'default'})`)
+
+    edgeSel.merge(edgeEnter)
+      .attr('x1', d => d.source.x)
+      .attr('y1', d => d.source.y)
+      .attr('x2', d => d.target.x)
+      .attr('y2', d => d.target.y)
+
+    // Invisible hit-area edges (separate group to avoid keyed join collision)
+    const edgeHitSel = gEdgeHits.selectAll('.edge-hit')
       .data(_edges, d => d.id)
     edgeHitSel.exit().remove()
     const edgeHitEnter = edgeHitSel.enter().append('line')
@@ -192,19 +212,6 @@ export function useForceGraph(options = {}) {
         if (options.onEdgeSelect) options.onEdgeSelect(d)
       })
     edgeHitSel.merge(edgeHitEnter)
-      .attr('x1', d => d.source.x)
-      .attr('y1', d => d.source.y)
-      .attr('x2', d => d.target.x)
-      .attr('y2', d => d.target.y)
-
-    const edgeEnter = edgeSel.enter().append('line')
-      .attr('stroke', d => getEdgeColor(d.type || d.relation_type))
-      .attr('stroke-width', 1)
-      .attr('stroke-opacity', 0.4)
-      .attr('pointer-events', 'none')
-      .attr('marker-end', d => `url(#arrow-${d.type || d.relation_type || 'default'})`)
-
-    edgeSel.merge(edgeEnter)
       .attr('x1', d => d.source.x)
       .attr('y1', d => d.source.y)
       .attr('x2', d => d.target.x)

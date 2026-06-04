@@ -77,11 +77,17 @@ watch(() => [props.nodes, props.edges], ([newNodes, newEdges]) => {
   }
 }, { deep: true })
 
-// Watch for selection changes
+// Watch for selection changes — only highlight for node IDs, not edge IDs
 watch(() => props.selectedId, (newId) => {
   if (newId) {
-    const neighbors = selectNode(newId)
-    emit('select', props.nodes.find(n => n.id === newId))
+    const isNode = newId.startsWith('entity:') || newId.startsWith('event:')
+    if (isNode) {
+      const neighbors = selectNode(newId)
+      emit('select', props.nodes.find(n => n.id === newId))
+    } else {
+      // Edge selected: clear node highlight but don't dim the graph
+      clearHighlight()
+    }
   } else {
     clearHighlight()
   }

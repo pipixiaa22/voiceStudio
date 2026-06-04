@@ -1,4 +1,9 @@
-"""Chroma vector store wrapper with project-level isolation."""
+"""Vector store wrapper with project-level isolation.
+
+Supports two backends:
+- ChromaDB (default, local file-based)
+- pgvector (PostgreSQL, auto-selected when DATABASE_URL is postgresql)
+"""
 
 import os
 import logging
@@ -10,11 +15,21 @@ _stores = {}
 _stores_lock = threading.Lock()
 
 
+def _is_pgvector_available():
+    """Check if the current database is PostgreSQL (pgvector-capable)."""
+    db_url = os.environ.get('DATABASE_URL', '')
+    return db_url.startswith('postgresql')
+
+
 def get_vector_store(project_id):
-    """Get or create a Chroma vector store for a project.
+    """Get or create a vector store for a project.
 
     Each project gets its own collection to prevent cross-project contamination.
     Thread-safe: entire creation is inside the lock to prevent duplicates.
+
+    Backend selection:
+    - If DATABASE_URL is PostgreSQL → use pgvector (same connection)
+    - Otherwise → use ChromaDB (local file)
     """
     project_id = str(project_id)
     with _stores_lock:
@@ -26,6 +41,41 @@ def get_vector_store(project_id):
         if embeddings is None:
             return None
 
+        if _is_pgvector_available():
+            store = _create_pgvector_store(project_id, embeddings)
+        else:
+            store = _create_chroma_store(project_id, embeddings)
+
+        if store is not None:
+            _stores[project_id] = store
+        return store
+
+
+def _create_pgvector_store(project_id, embeddings):
+    """Create a pgvector-backed store using the same PostgreSQL connection."""
+    try:
+        from langchain_postgres import PGVector
+
+        connection_string = os.environ.get('DATABASE_URL', '')
+        # SQLAlchemy URL format works directly with langchain-postgres
+        collection_name = f'novel_{project_id}'
+
+        store = PGVector(
+            connection=connection_string,
+            embeddings=embeddings,
+            collection_name=collection_name,
+            use_jsonb=True,
+        )
+        logger.info(f'Using pgvector for project {project_id}')
+        return store
+    except Exception as e:
+        logger.warning(f'Failed to create pgvector store, falling back to ChromaDB: {e}')
+        return _create_chroma_store(project_id, embeddings)
+
+
+def _create_chroma_store(project_id, embeddings):
+    """Create a ChromaDB-backed store (local file)."""
+    try:
         persist_dir = os.environ.get('CHROMADB_PERSIST_DIR') or os.path.join(os.getcwd(), 'data', 'chromadb')
         os.makedirs(persist_dir, exist_ok=True)
 
@@ -35,8 +85,11 @@ def get_vector_store(project_id):
             embedding_function=embeddings,
             persist_directory=persist_dir,
         )
-        _stores[project_id] = store
+        logger.info(f'Using ChromaDB for project {project_id}')
         return store
+    except Exception as e:
+        logger.error(f'Failed to create ChromaDB store: {e}')
+        return None
 
 
 def invalidate_store(project_id):
@@ -90,13 +143,11 @@ def delete_by_memory_id(project_id, memory_id):
 
 
 def _clear_collection(store):
-    """Delete all documents from a Chroma collection.
+    """Delete all documents from a collection.
 
-    Tries multiple strategies since the API varies across versions:
-    1. Get all IDs and delete by IDs (most reliable)
-    2. Delete with where filter on a known metadata field
-    3. Fall back to internal _collection.delete
+    Tries multiple strategies since the API varies across backends.
     """
+    # Try ChromaDB-style clear
     try:
         result = store.get(include=[])
         all_ids = result.get('ids', [])
@@ -114,8 +165,18 @@ def _clear_collection(store):
 
     try:
         store._collection.delete(where={})
+        return
     except Exception:
-        logger.warning('All collection clear strategies failed')
+        pass
+
+    # Try pgvector-style clear (delete by filter)
+    try:
+        store.delete(where={'memory_id': {'$ne': '__no_match__'}})
+        return
+    except Exception:
+        pass
+
+    logger.warning('All collection clear strategies failed')
 
 
 def rebuild_index(project_id, memories):
@@ -166,3 +227,17 @@ def reset_stores():
     """Reset cached stores (for testing)."""
     global _stores
     _stores = {}
+
+
+def reset_vector_stores():
+    """Clear all cached vector store instances.
+
+    Called after embedding key or persist dir changes so the next
+    get_vector_store() recreates stores with updated config.
+    """
+    global _stores
+    with _stores_lock:
+        count = len(_stores)
+        _stores = {}
+    if count:
+        logger.info('Vector store cache cleared (%d entries)', count)

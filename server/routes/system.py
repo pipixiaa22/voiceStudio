@@ -66,14 +66,17 @@ def _parse_database_url(url):
     if not url:
         return {'driver': 'sqlite', 'host': '', 'port': '', 'user': '', 'password': '', 'database': ''}
     # mysql+pymysql://user:pass@host:port/db?charset=utf8mb4
+    # postgresql+psycopg2://user:pass@host:port/db
     m = re.match(r'(\w+\+?\w*)://([^:]*):?([^@]*)@([^:/]+):?(\d*)/(\w+)', url)
     if m:
+        driver = m.group(1)
+        default_port = '5432' if 'postgres' in driver else '3306'
         return {
-            'driver': m.group(1),
+            'driver': driver,
             'user': url_unquote(m.group(2)),
             'password': url_unquote(m.group(3)),
             'host': m.group(4),
-            'port': m.group(5) or '3306',
+            'port': m.group(5) or default_port,
             'database': m.group(6),
         }
     return {'driver': 'sqlite', 'host': '', 'port': '', 'user': '', 'password': '', 'database': ''}
@@ -87,7 +90,6 @@ def _build_database_url(parts):
     user = parts.get('user', '')
     password = parts.get('password', '')
     database = parts.get('database', '')
-    charset = parts.get('charset', 'utf8mb4')
     if not host or not database:
         return ''
     safe_user = url_quote(user, safe='')
@@ -96,6 +98,9 @@ def _build_database_url(parts):
         auth = f'{safe_user}:{safe_pass}'
     else:
         auth = safe_user
+    if 'postgres' in driver:
+        return f'{driver}://{auth}@{host}:{port}/{database}'
+    charset = parts.get('charset', 'utf8mb4')
     return f'{driver}://{auth}@{host}:{port}/{database}?charset={charset}'
 
 
@@ -159,6 +164,7 @@ def _effective_env():
         'CHROMADB_PERSIST_DIR',
         'OPENAI_API_KEY',
         'DEEPSEEK_API_KEY',
+        'DASHSCOPE_API_KEY',
     ):
         if key in os.environ:
             result[key] = os.environ.get(key, '')
@@ -202,7 +208,7 @@ def _mask_value(key, value):
     """Mask sensitive values for display."""
     if not value:
         return ''
-    sensitive_keys = {'DATABASE_URL', 'REDIS_URL', 'OPENAI_API_KEY', 'DEEPSEEK_API_KEY', 'MYSQL_PASSWORD', 'VOICE_DB_PASSWORD'}
+    sensitive_keys = {'DATABASE_URL', 'REDIS_URL', 'OPENAI_API_KEY', 'DEEPSEEK_API_KEY', 'DASHSCOPE_API_KEY', 'MYSQL_PASSWORD', 'VOICE_DB_PASSWORD'}
     if key in sensitive_keys:
         if len(value) <= 8:
             return '***'
@@ -290,14 +296,24 @@ def get_config():
     db_parts = _parse_database_url(env.get('DATABASE_URL', ''))
     redis_parts = _parse_redis_url(env.get('REDIS_URL', ''))
 
+    driver = db_parts.get('driver', '')
+    if 'postgres' in driver:
+        effective_db = 'PostgreSQL'
+    elif 'mysql' in driver:
+        effective_db = 'MySQL'
+    else:
+        effective_db = 'SQLite'
+
+    vector_backend = 'pgvector' if 'postgres' in driver else 'chromadb'
+
     config = {
         'database': {
-            'driver': db_parts.get('driver', 'mysql+pymysql'),
+            'driver': driver or 'mysql+pymysql',
             'host': db_parts.get('host', ''),
             'port': db_parts.get('port', ''),
             'user': db_parts.get('user', ''),
             'database': db_parts.get('database', ''),
-            'effective_db': 'MySQL' if db_parts.get('driver', '').startswith('mysql') else 'SQLite',
+            'effective_db': effective_db,
         },
         'redis': {
             'host': redis_parts.get('host', ''),
@@ -306,9 +322,11 @@ def get_config():
             'REDIS_KEY_PREFIX': env.get('REDIS_KEY_PREFIX', 'video-script'),
         },
         'rag': {
+            'vector_backend': vector_backend,
             'CHROMADB_PERSIST_DIR': env.get('CHROMADB_PERSIST_DIR', ''),
             'OPENAI_API_KEY': _mask_value('OPENAI_API_KEY', env.get('OPENAI_API_KEY', '')),
             'DEEPSEEK_API_KEY': _mask_value('DEEPSEEK_API_KEY', env.get('DEEPSEEK_API_KEY', '')),
+            'DASHSCOPE_API_KEY': _mask_value('DASHSCOPE_API_KEY', env.get('DASHSCOPE_API_KEY', '')),
         },
     }
     # Add Redis health
@@ -362,7 +380,7 @@ def update_config():
     # RAG: direct key-value
     if 'rag' in data:
         rag = data['rag']
-        for key in ('CHROMADB_PERSIST_DIR', 'OPENAI_API_KEY', 'DEEPSEEK_API_KEY'):
+        for key in ('CHROMADB_PERSIST_DIR', 'OPENAI_API_KEY', 'DEEPSEEK_API_KEY', 'DASHSCOPE_API_KEY'):
             if key in rag:
                 updates[key] = rag[key]
 
@@ -370,7 +388,17 @@ def update_config():
         return jsonify({'error': '无有效配置项'}), 400
 
     _write_env(updates)
-    return jsonify({'message': '配置已保存，需要重启服务生效', 'updated': list(updates.keys())})
+
+    from server.services.runtime_config import apply_runtime_updates
+    effects = apply_runtime_updates(updates)
+    restart_required = any(e['status'] == 'restart_required' for e in effects)
+
+    return jsonify({
+        'message': '配置已保存',
+        'updated': list(updates.keys()),
+        'effects': effects,
+        'restart_required': restart_required,
+    })
 
 
 @system_bp.route('/api/system/config/test', methods=['POST'])
