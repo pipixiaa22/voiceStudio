@@ -10,6 +10,9 @@
         @search="onSearch"
         @change="onSearchChange"
       />
+      <a-button size="small" @click="$emit('toggle-filters')" :type="filtersVisible ? 'primary' : 'default'">
+        <template #icon><FilterOutlined /></template>
+      </a-button>
     </div>
 
     <div class="toolbar-center">
@@ -25,22 +28,21 @@
     </div>
 
     <div class="toolbar-right">
+      <template v-if="mode === 'edit'">
+        <a-button size="small" @click="$emit('add-node')">
+          {{ graphType === 'characters' ? '新增人物' : '新增事件' }}
+        </a-button>
+        <a-button size="small" @click="$emit('add-relation')">新增关系</a-button>
+        <a-button
+          type="primary"
+          size="small"
+          @click="$emit('save-layout')"
+        >
+          保存布局
+        </a-button>
+      </template>
       <a-button size="small" @click="$emit('fit')">
         <template #icon><ExpandOutlined /></template>
-      </a-button>
-      <a-button size="small" @click="$emit('zoom-in')">
-        <template #icon><ZoomInOutlined /></template>
-      </a-button>
-      <a-button size="small" @click="$emit('zoom-out')">
-        <template #icon><ZoomOutOutlined /></template>
-      </a-button>
-      <a-button
-        v-if="mode === 'edit'"
-        type="primary"
-        size="small"
-        @click="$emit('save-layout')"
-      >
-        保存布局
       </a-button>
     </div>
   </div>
@@ -48,15 +50,20 @@
 
 <script setup>
 import { ref, watch } from 'vue'
-import { ExpandOutlined, ZoomInOutlined, ZoomOutOutlined } from '@ant-design/icons-vue'
+import { ExpandOutlined, FilterOutlined } from '@ant-design/icons-vue'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
   graphType: { type: String, default: 'characters' },
   mode: { type: String, default: 'explore' },
+  filtersVisible: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['update:modelValue', 'update:graphType', 'update:mode', 'search', 'fit', 'zoom-in', 'zoom-out', 'save-layout'])
+const emit = defineEmits([
+  'update:modelValue', 'update:graphType', 'update:mode',
+  'search', 'fit', 'zoom-in', 'zoom-out',
+  'save-layout', 'add-node', 'add-relation', 'toggle-filters',
+])
 
 const localQuery = ref(props.modelValue)
 
@@ -93,7 +100,9 @@ function onSearchChange(e) {
 }
 
 .toolbar-left {
-  flex: 0 0 200px;
+  flex: 0 0 240px;
+  display: flex;
+  gap: 6px;
 }
 
 .toolbar-search {

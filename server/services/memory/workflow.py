@@ -11,6 +11,7 @@ class ChapterState(TypedDict):
     user_instruction: str
     version_type: str
     model_key: str
+    model_config: dict
 
     # Intermediate results
     context: dict
@@ -79,6 +80,7 @@ def draft_chapter_node(state: ChapterState) -> dict:
         system_prompt=system_prompt,
         user_instruction=state.get('user_instruction', ''),
         model_key=state.get('model_key'),
+        model_config=state.get('model_config'),
         version_type=state.get('version_type', 'custom'),
     )
 
@@ -94,7 +96,12 @@ def review_draft_node(state: ChapterState) -> dict:
         return {'review_result': {'score': 0, 'issues': []}}
 
     try:
-        result = review_content(state['project_id'], state['chapter_id'], draft)
+        result = review_content(
+            state['project_id'],
+            state['chapter_id'],
+            draft,
+            params={'model_config': state.get('model_config')},
+        )
     except Exception:
         result = {'score': 0, 'issues': []}
 
@@ -123,7 +130,7 @@ def revise_draft_node(state: ChapterState) -> dict:
 
 请输出修改后的完整章节内容。只输出正文，不要解释。"""
 
-    provider, default_model = get_llm_provider()
+    provider, default_model = get_llm_provider(state.get('model_config'))
     messages = [{'role': 'user', 'content': prompt}]
 
     try:
@@ -208,7 +215,7 @@ def build_chapter_workflow():
 
 
 def run_chapter_workflow(project_id, chapter_id, user_instruction='',
-                         version_type='custom', model_key=None):
+                         version_type='custom', model_key=None, model_config=None):
     """Run the full chapter generation workflow.
 
     Returns:
@@ -222,6 +229,7 @@ def run_chapter_workflow(project_id, chapter_id, user_instruction='',
         'user_instruction': user_instruction,
         'version_type': version_type,
         'model_key': model_key or '',
+        'model_config': model_config or {},
         'context': {},
         'memories': [],
         'conflicts': [],

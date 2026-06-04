@@ -9,7 +9,7 @@ from server.services.novel.context_builder import _build_character_context, _bui
 from server.services.novel.prompt_templates import build_review_prompt
 
 
-def review_chapter(project_id, chapter_id):
+def review_chapter(project_id, chapter_id, params=None):
     """Run consistency review on a chapter."""
     project = NovelProject.query.get_or_404(project_id)
     chapter = NovelChapter.query.get_or_404(chapter_id)
@@ -24,10 +24,10 @@ def review_chapter(project_id, chapter_id):
         'world_rules': _format_world_rules(project.settings),
     }
 
-    return _do_review(project_id, chapter_id, chapter.content_markdown, context)
+    return _do_review(project_id, chapter_id, chapter.content_markdown, context, params=params)
 
 
-def review_content(project_id, chapter_id, content):
+def review_content(project_id, chapter_id, content, params=None):
     """Run consistency review on arbitrary content (e.g. a draft not yet saved).
 
     Args:
@@ -47,15 +47,16 @@ def review_content(project_id, chapter_id, content):
         'world_rules': _format_world_rules(project.settings),
     }
 
-    return _do_review(project_id, chapter_id, content, context)
+    return _do_review(project_id, chapter_id, content, context, params=params)
 
 
-def _do_review(project_id, chapter_id, content, context):
+def _do_review(project_id, chapter_id, content, context, params=None):
     """Internal review implementation."""
     prompt = build_review_prompt(content, context)
 
     from server.services.novel import get_llm_provider
-    provider, default_model = get_llm_provider()
+    params = params or {}
+    provider, default_model = get_llm_provider(params.get('model_config'))
 
     messages = [{'role': 'user', 'content': prompt}]
     response = provider.complete(

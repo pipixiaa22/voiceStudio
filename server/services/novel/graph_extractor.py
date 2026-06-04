@@ -7,7 +7,7 @@ from server.models.novel.graph_change import NovelGraphChange
 from server.services.novel.prompt_templates import build_extract_prompt
 
 
-def extract_graph_changes(project_id, chapter_id):
+def extract_graph_changes(project_id, chapter_id, params=None):
     """Extract graph change candidates from chapter content."""
     chapter = NovelChapter.query.get_or_404(chapter_id)
     if not chapter.content_markdown:
@@ -18,7 +18,8 @@ def extract_graph_changes(project_id, chapter_id):
 
     # Call LLM
     from server.services.novel import get_llm_provider
-    provider, default_model = get_llm_provider()
+    params = params or {}
+    provider, default_model = get_llm_provider(params.get('model_config'))
 
     messages = [{'role': 'user', 'content': prompt}]
     response = provider.complete(

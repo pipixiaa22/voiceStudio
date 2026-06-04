@@ -178,10 +178,30 @@ export function useForceGraph(options = {}) {
 
     edgeSel.exit().remove()
 
+    // Invisible hit area for easier clicking
+    const edgeHitSel = gEdges.selectAll('.edge-hit')
+      .data(_edges, d => d.id)
+    edgeHitSel.exit().remove()
+    const edgeHitEnter = edgeHitSel.enter().append('line')
+      .attr('class', 'edge-hit')
+      .attr('stroke', 'transparent')
+      .attr('stroke-width', 12)
+      .attr('cursor', 'pointer')
+      .on('click', (event, d) => {
+        event.stopPropagation()
+        if (options.onEdgeSelect) options.onEdgeSelect(d)
+      })
+    edgeHitSel.merge(edgeHitEnter)
+      .attr('x1', d => d.source.x)
+      .attr('y1', d => d.source.y)
+      .attr('x2', d => d.target.x)
+      .attr('y2', d => d.target.y)
+
     const edgeEnter = edgeSel.enter().append('line')
       .attr('stroke', d => getEdgeColor(d.type || d.relation_type))
       .attr('stroke-width', 1)
       .attr('stroke-opacity', 0.4)
+      .attr('pointer-events', 'none')
       .attr('marker-end', d => `url(#arrow-${d.type || d.relation_type || 'default'})`)
 
     edgeSel.merge(edgeEnter)
@@ -372,11 +392,15 @@ export function useForceGraph(options = {}) {
   }
 
   function getPositions() {
-    return _nodes.map(n => ({
-      id: n.id,
-      x: n.x,
-      y: n.y,
-    }))
+    return _nodes.map(n => {
+      // Strip namespaced prefix (e.g. 'entity:12' → 12) for backend compatibility
+      const rawId = n._rawId != null ? n._rawId : (typeof n.id === 'string' && n.id.includes(':') ? Number(n.id.split(':')[1]) : n.id)
+      return {
+        id: rawId,
+        x: n.x,
+        y: n.y,
+      }
+    })
   }
 
   function pinNode(id, x, y) {

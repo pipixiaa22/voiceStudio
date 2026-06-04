@@ -3,8 +3,9 @@ import pymysql
 from contextlib import contextmanager
 from dotenv import load_dotenv
 
-# 加载 .env 文件
-load_dotenv()
+# Load the project .env explicitly so this helper works from any cwd.
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+load_dotenv(os.path.join(PROJECT_ROOT, '.env'), override=True)
 
 # 数据库配置，优先从环境变量读取
 DB_CONFIG = {

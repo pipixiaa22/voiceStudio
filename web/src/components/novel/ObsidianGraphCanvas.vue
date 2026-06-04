@@ -18,7 +18,7 @@ const props = defineProps({
   mode: { type: String, default: 'explore' },
 })
 
-const emit = defineEmits(['select', 'hover', 'unhover', 'dblclick', 'drag-end', 'canvas-click', 'create-edge'])
+const emit = defineEmits(['select', 'edge-select', 'hover', 'unhover', 'dblclick', 'drag-end', 'canvas-click', 'create-edge'])
 
 const containerRef = ref(null)
 const svgRef = ref(null)
@@ -43,6 +43,7 @@ const {
   onHover: (d) => emit('hover', d),
   onUnhover: (d) => emit('unhover', d),
   onSelect: (d) => emit('select', d),
+  onEdgeSelect: (d) => emit('edge-select', d),
   onDblClick: (d) => emit('dblclick', d),
   onDragEnd: (d) => emit('drag-end', d),
 })

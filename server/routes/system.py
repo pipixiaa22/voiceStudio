@@ -3,7 +3,7 @@ import re
 import sys
 import threading
 from pathlib import Path
-from urllib.parse import quote as url_quote
+from urllib.parse import quote as url_quote, unquote as url_unquote
 from functools import wraps
 from flask import Blueprint, request, jsonify, abort
 
@@ -13,17 +13,42 @@ _ENV_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file_
 
 
 def _require_local(f):
-    """Decorator that restricts endpoints to localhost requests only."""
+    """Decorator that restricts endpoints to localhost requests with valid Origin.
+
+    Blocks cross-origin CSRF even when the request reaches 127.0.0.1,
+    because a malicious page at https://evil can POST to localhost with
+    a spoofed Origin.
+    """
     @wraps(f)
     def wrapper(*args, **kwargs):
         remote = request.remote_addr or ''
         if remote not in ('127.0.0.1', '::1', 'localhost'):
-            # Also check X-Forwarded-For for proxied requests
             forwarded = request.headers.get('X-Forwarded-For', '')
             if forwarded:
                 remote = forwarded.split(',')[0].strip()
             if remote not in ('127.0.0.1', '::1', 'localhost'):
                 abort(403)
+
+        # CSRF protection: reject cross-origin requests
+        origin = request.headers.get('Origin', '')
+        referer = request.headers.get('Referer', '')
+        allowed_hosts = {
+            'localhost:5002', '127.0.0.1:5002', '[::1]:5002',
+            'localhost:3000', '127.0.0.1:3000', '[::1]:3000',
+        }
+        if origin:
+            from urllib.parse import urlparse
+            parsed = urlparse(origin)
+            host = f'{parsed.hostname}:{parsed.port}' if parsed.port else parsed.hostname
+            if host not in allowed_hosts:
+                abort(403)
+        elif referer:
+            from urllib.parse import urlparse
+            parsed = urlparse(referer)
+            host = f'{parsed.hostname}:{parsed.port}' if parsed.port else parsed.hostname
+            if host not in allowed_hosts:
+                abort(403)
+
         return f(*args, **kwargs)
     return wrapper
 
@@ -32,11 +57,12 @@ def _restart_server():
     """Restart the server process by re-exec-ing after a short delay."""
     import time
     time.sleep(1)
-    os.execv(sys.executable, [sys.executable] + sys.argv)
+    os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+    os.execv(sys.executable, [sys.executable, '-m', 'server.app'])
 
 
 def _parse_database_url(url):
-    """Parse a SQLAlchemy database URL into components."""
+    """Parse a SQLAlchemy database URL into components, URL-decoding credentials."""
     if not url:
         return {'driver': 'sqlite', 'host': '', 'port': '', 'user': '', 'password': '', 'database': ''}
     # mysql+pymysql://user:pass@host:port/db?charset=utf8mb4
@@ -44,8 +70,8 @@ def _parse_database_url(url):
     if m:
         return {
             'driver': m.group(1),
-            'user': m.group(2),
-            'password': m.group(3),
+            'user': url_unquote(m.group(2)),
+            'password': url_unquote(m.group(3)),
             'host': m.group(4),
             'port': m.group(5) or '3306',
             'database': m.group(6),
@@ -74,14 +100,14 @@ def _build_database_url(parts):
 
 
 def _parse_redis_url(url):
-    """Parse a Redis URL into components."""
+    """Parse a Redis URL into components, URL-decoding credentials."""
     if not url:
         return {'host': '', 'port': '6379', 'password': '', 'db': '0'}
     # redis://:password@host:port/db
     m = re.match(r'redis://:?([^@]*)@([^:/]+):?(\d*)/?(\d*)', url)
     if m:
         return {
-            'password': m.group(1),
+            'password': url_unquote(m.group(1)),
             'host': m.group(2),
             'port': m.group(3) or '6379',
             'db': m.group(4) or '0',
@@ -120,6 +146,22 @@ def _read_env():
                 key = key.strip()
                 value = value.strip().strip('"').strip("'")
                 result[key] = value
+    return result
+
+
+def _effective_env():
+    """Return saved .env values overlaid with current process env values."""
+    result = _read_env()
+    for key in (
+        'DATABASE_URL',
+        'REDIS_URL',
+        'REDIS_KEY_PREFIX',
+        'CHROMADB_PERSIST_DIR',
+        'OPENAI_API_KEY',
+        'DEEPSEEK_API_KEY',
+    ):
+        if key in os.environ:
+            result[key] = os.environ.get(key, '')
     return result
 
 
@@ -243,7 +285,7 @@ def list_directories():
 
 @system_bp.route('/api/system/config', methods=['GET'])
 def get_config():
-    env = _read_env()
+    env = _effective_env()
 
     db_parts = _parse_database_url(env.get('DATABASE_URL', ''))
     redis_parts = _parse_redis_url(env.get('REDIS_URL', ''))
@@ -336,10 +378,15 @@ def test_config():
     data = request.get_json() or {}
     target = data.get('target')  # 'database' or 'redis'
     results = {}
+    env = _read_env()
 
     if target == 'database':
         db_data = data.get('database', {})
         if db_data.get('host') and db_data.get('database'):
+            # Preserve existing password if user didn't provide one
+            if not db_data.get('password'):
+                existing = _parse_database_url(env.get('DATABASE_URL', ''))
+                db_data['password'] = existing.get('password', '')
             url = _build_database_url(db_data)
         else:
             url = ''
@@ -365,6 +412,10 @@ def test_config():
     elif target == 'redis':
         rd_data = data.get('redis', {})
         if rd_data.get('host'):
+            # Preserve existing password if user didn't provide one
+            if not rd_data.get('password'):
+                existing = _parse_redis_url(env.get('REDIS_URL', ''))
+                rd_data['password'] = existing.get('password', '')
             url = _build_redis_url(rd_data)
         else:
             url = ''

@@ -30,7 +30,7 @@ function migrateOldKeys(settings) {
     if (!hasMimo) {
       settings.providers.push({
         provider_key: 'mimo',
-        api_key: oldTtsKey || oldLlmKey,
+        api_key: oldLlmKey || oldTtsKey,
         enabled: true,
       })
     }
@@ -77,10 +77,12 @@ export function useModelSettings() {
   const resolveUsage = (usage) => {
     const def = getUsageDefault(usage)
     if (!def) return null
+    const provider = getProvider(def.provider_key)
     return {
       provider_key: def.provider_key,
       model_key: def.model_key,
-      api_key: getProviderApiKey(def.provider_key),
+      api_key: provider?.api_key || '',
+      base_url: provider?.base_url || '',
     }
   }
 

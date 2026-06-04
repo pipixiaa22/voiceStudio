@@ -10,6 +10,7 @@
       :query="store.graphView.query"
       :mode="store.graphView.mode"
       @select="handleSelect"
+      @edge-select="handleEdgeSelect"
       @hover="handleHover"
       @unhover="handleUnhover"
       @dblclick="handleDblClick"
@@ -33,36 +34,55 @@ onMounted(() => {
   }
 })
 
-// Map events to graph nodes with namespaced IDs
-const graphNodes = computed(() =>
-  store.events.map(e => ({
-    id: `event:${e.id}`,
-    _rawId: e.id,
-    name: e.title,
-    title: e.title,
-    type: e.event_type || 'event',
-    importance: 5,
-    summary: e.summary,
-    event_type: e.event_type,
-    timeline_order: e.timeline_order || 0,
-    chapter_id: e.chapter_id,
-    x: e.x ?? e.node_x ?? 0,
-    y: e.y ?? e.node_y ?? 0,
-  }))
-)
+// Map events to graph nodes with namespaced IDs, applying filters
+const graphNodes = computed(() => {
+  const f = store.graphView.filters
+  return store.events
+    .filter(e => {
+      // Node type filter
+      if (f.nodeTypes && f.nodeTypes.length > 0 && !f.nodeTypes.includes(e.event_type || 'event')) return false
+      return true
+    })
+    .map(e => ({
+      id: `event:${e.id}`,
+      _rawId: e.id,
+      name: e.title,
+      title: e.title,
+      type: e.event_type || 'event',
+      importance: 5,
+      summary: e.summary,
+      event_type: e.event_type,
+      timeline_order: e.timeline_order || 0,
+      chapter_id: e.chapter_id,
+      x: e.x ?? e.node_x ?? 0,
+      y: e.y ?? e.node_y ?? 0,
+    }))
+})
 
-// Map event-relations to graph edges with namespaced IDs
-const graphEdges = computed(() =>
-  store.eventRelations.map(r => ({
-    id: `erel:${r.id}`,
-    source: `event:${r.source || r.source_event_id}`,
-    target: `event:${r.target || r.target_event_id}`,
-    type: r.type || r.relation_type,
-    label: r.label || r.type || r.relation_type,
-    description: r.description,
-    confidence: r.confidence || 1.0,
-  }))
-)
+// Map event-relations to graph edges with namespaced IDs, applying filters
+const graphEdges = computed(() => {
+  const f = store.graphView.filters
+  const nodeIds = new Set(graphNodes.value.map(n => n.id))
+  return store.eventRelations
+    .filter(r => {
+      const sid = `event:${r.source || r.source_event_id}`
+      const tid = `event:${r.target || r.target_event_id}`
+      if (!nodeIds.has(sid) || !nodeIds.has(tid)) return false
+      // Edge type filter
+      if (f.edgeTypes && f.edgeTypes.length > 0 && !f.edgeTypes.includes(r.type || r.relation_type)) return false
+      return true
+    })
+    .map(r => ({
+      id: `erel:${r.id}`,
+      _rawId: r.id,
+      source: `event:${r.source || r.source_event_id}`,
+      target: `event:${r.target || r.target_event_id}`,
+      type: r.type || r.relation_type,
+      label: r.label || r.type || r.relation_type,
+      description: r.description,
+      confidence: r.confidence || 1.0,
+    }))
+})
 
 function handleSelect(d) {
   if (d) {
@@ -72,6 +92,17 @@ function handleSelect(d) {
     store.selectedRelationId = null
     const neighbors = canvasRef.value?.highlightNode(d.id)
     store.graphView.neighborIds = neighbors || []
+  }
+}
+
+function handleEdgeSelect(d) {
+  if (d) {
+    store.graphView.selectedId = d.id
+    store.selectedEventId = null
+    store.selectedEntityId = null
+    store.selectedRelationId = null
+    store.graphView.neighborIds = []
+    canvasRef.value?.clearHighlight()
   }
 }
 

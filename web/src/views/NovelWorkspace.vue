@@ -64,9 +64,13 @@
           v-model="store.graphView.query"
           v-model:graphType="store.graphType"
           v-model:mode="store.graphView.mode"
+          :filtersVisible="showFilters"
           @search="handleGraphSearch"
           @fit="handleGraphFit"
           @save-layout="handleSaveGraphLayout"
+          @add-node="handleAddNode"
+          @add-relation="handleAddRelation"
+          @toggle-filters="showFilters = !showFilters"
         />
         <div class="workspace-graph-area">
           <GraphFilters
@@ -275,9 +279,46 @@ async function handleSaveGraphLayout() {
   message.success('布局已保存')
 }
 
+async function handleAddNode() {
+  if (!store.currentProject) return
+  if (store.graphType === 'characters') {
+    await store.createEntity(store.currentProject.id, { name: '新角色', entity_type: 'character' })
+  } else {
+    await store.createEvent(store.currentProject.id, { title: '新事件', event_type: 'event' })
+  }
+}
+
+async function handleAddRelation() {
+  if (!store.currentProject) return
+  if (store.graphType === 'characters') {
+    if (store.entities.length < 2) {
+      message.warning('至少需要两个人物才能创建关系')
+      return
+    }
+    await store.createRelation(store.currentProject.id, {
+      source_entity_id: store.entities[0].id,
+      target_entity_id: store.entities[1].id,
+      relation_type: '其他',
+    })
+  } else {
+    if (store.events.length < 2) {
+      message.warning('至少需要两个事件才能创建关系')
+      return
+    }
+    await store.createEventRelation(store.currentProject.id, {
+      source_event_id: store.events[0].id,
+      target_event_id: store.events[1].id,
+      relation_type: 'causes',
+    })
+  }
+}
+
 function handleInspectorFocus(nodeId) {
+  // nodeId is the raw numeric ID from the inspector; convert to namespaced for canvas
+  const prefix = store.graphType === 'characters' ? 'entity' : 'event'
+  const namespacedId = `${prefix}:${nodeId}`
   const canvasRef = store.graphType === 'characters' ? charGraphRef.value : eventGraphRef.value
-  canvasRef?.focusNode(nodeId)
+  canvasRef?.focusNode(namespacedId)
 }
 
 function handleInspectorEdit(node) {

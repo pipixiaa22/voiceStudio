@@ -7,7 +7,14 @@ from server.services.novel.context_builder import build_context
 from server.services.novel.prompt_templates import build_chapter_system_prompt
 
 
-def generate_single_version(project_id, chapter_id, version_type='custom', user_instruction='', model_key=None):
+def generate_single_version(
+    project_id,
+    chapter_id,
+    version_type='custom',
+    user_instruction='',
+    model_key=None,
+    model_config=None,
+):
     """Generate a single version for a chapter."""
     project = NovelProject.query.get_or_404(project_id)
     chapter = NovelChapter.query.get_or_404(chapter_id)
@@ -31,6 +38,7 @@ def generate_single_version(project_id, chapter_id, version_type='custom', user_
         system_prompt=system_prompt,
         user_instruction=user_instruction,
         model_key=model_key,
+        model_config=model_config,
         version_type=version_type,
     )
 

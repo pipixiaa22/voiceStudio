@@ -12,6 +12,7 @@ def generate_versions(project_id, chapter_id, params):
     version_types = params.get('version_types', DEFAULT_VERSION_TYPES)
     user_instruction = params.get('user_instruction', '')
     model_key = params.get('model_key')
+    model_config = params.get('model_config')
 
     results = []
     for vtype in version_types:
@@ -22,6 +23,7 @@ def generate_versions(project_id, chapter_id, params):
                 version_type=vtype,
                 user_instruction=user_instruction,
                 model_key=model_key,
+                model_config=model_config,
             )
             results.append(version.to_dict())
         except Exception as e:

@@ -1,6 +1,6 @@
 # server/routes/novels/graph.py
 import json
-from flask import request, jsonify, Response
+from flask import request, jsonify, Response, stream_with_context
 from server.models import db
 from server.models.novel.project import NovelProject
 from server.models.novel.entity import NovelEntity, NovelRelation
@@ -278,17 +278,16 @@ def get_generation(gen_id):
 def stream_generation(gen_id):
     def generate():
         import time
-        gen = NovelGeneration.query.get(gen_id)
-        if not gen:
-            yield f'event: error\ndata: {json.dumps({"error": "not found"})}\n\n'
-            return
-
-        # Check Redis first
-        from server.services.redis_client import get_redis, redis_key
-        r = get_redis()
 
         while True:
-            db.session.refresh(gen)
+            # End the previous transaction before polling again. MySQL's default
+            # REPEATABLE READ can otherwise keep returning the first snapshot.
+            db.session.rollback()
+            gen = db.session.get(NovelGeneration, gen_id, populate_existing=True)
+            if not gen:
+                yield f'event: error\ndata: {json.dumps({"error": "not found"})}\n\n'
+                break
+
             data = gen.to_dict()
             yield f'event: progress\ndata: {json.dumps(data, ensure_ascii=False)}\n\n'
 
@@ -298,5 +297,5 @@ def stream_generation(gen_id):
 
             time.sleep(1)
 
-    return Response(generate(), mimetype='text/event-stream',
+    return Response(stream_with_context(generate()), mimetype='text/event-stream',
                     headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})

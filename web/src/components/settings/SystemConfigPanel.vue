@@ -240,6 +240,8 @@ const loadConfig = async () => {
     rag.CHROMADB_PERSIST_DIR = data.rag?.CHROMADB_PERSIST_DIR || ''
     rag.OPENAI_API_KEY = ''
     rag.DEEPSEEK_API_KEY = ''
+  } catch (e) {
+    message.error('加载系统配置失败: ' + (e.response?.data?.error || e.message))
   } finally {
     loading.value = false
   }
@@ -377,7 +379,7 @@ const handleRestart = async () => {
 
 watch(() => props.active, (val) => {
   if (val) loadConfig()
-})
+}, { immediate: true })
 </script>
 
 <style scoped>

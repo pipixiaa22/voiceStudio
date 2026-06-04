@@ -167,7 +167,7 @@ def _run_chapter_version(gen, params):
 def _run_extract(gen, params):
     from server.services.novel.graph_extractor import extract_graph_changes
     _update_progress(gen, 10)
-    result = extract_graph_changes(gen.project_id, gen.target_id)
+    result = extract_graph_changes(gen.project_id, gen.target_id, params)
     gen.result = result
     _update_progress(gen, 100)
 
@@ -175,7 +175,7 @@ def _run_extract(gen, params):
 def _run_review(gen, params):
     from server.services.novel.consistency_reviewer import review_chapter
     _update_progress(gen, 10)
-    result = review_chapter(gen.project_id, gen.target_id)
+    result = review_chapter(gen.project_id, gen.target_id, params)
     gen.result = result
     _update_progress(gen, 100)
 
@@ -190,6 +190,7 @@ def _run_chapter_workflow(gen, params):
         user_instruction=params.get('user_instruction', ''),
         version_type=params.get('version_type', 'custom'),
         model_key=params.get('model_key'),
+        model_config=params.get('model_config'),
     )
 
     gen.result = {

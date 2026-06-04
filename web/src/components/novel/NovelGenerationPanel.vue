@@ -4,6 +4,14 @@
       <a-progress :percent="store.generation.progress" status="active" />
       <p>{{ store.generation.status === 'pending' ? '等待中...' : '生成中...' }}</p>
     </div>
+    <a-alert
+      v-else-if="store.generation?.status === 'failed'"
+      type="error"
+      show-icon
+      message="生成失败"
+      :description="store.generation.error || '请重新发起生成。'"
+      class="gen-alert"
+    />
     <template v-else>
       <a-form layout="vertical" size="small">
         <a-form-item label="版本方向">
@@ -58,5 +66,8 @@ const handleGenerate = async () => {
   margin-top: 8px;
   font-size: 13px;
   color: var(--text-muted);
+}
+.gen-alert {
+  margin-bottom: 12px;
 }
 </style>

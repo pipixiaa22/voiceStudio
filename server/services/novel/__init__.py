@@ -5,20 +5,32 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def get_llm_provider():
+def get_llm_provider(model_config=None):
     """Resolve the active LLM provider for novel generation.
 
     Priority:
-    1. Custom provider with llm_text capability (first one found)
-    2. Built-in provider matching MIMO_API_KEY / DEEPSEEK_API_KEY / OPENAI_API_KEY env vars
-    3. Fallback to mimo provider with empty key (will fail at call time if no key)
+    1. Explicit request model config from the frontend
+    2. Custom provider with llm_text capability (first one found)
+    3. Built-in provider matching MIMO_API_KEY / DEEPSEEK_API_KEY / OPENAI_API_KEY env vars
+    4. Fallback to mimo provider with empty key (will fail at call time if no key)
 
     Returns (provider, model_key) tuple.
     """
     from server.services.model_registry import ModelRegistry
     registry = ModelRegistry()
 
-    # 1. Check custom providers with llm_text capability AND valid API key
+    if model_config and model_config.get('api_key'):
+        provider_key = model_config.get('provider_key') or 'mimo'
+        model_key = model_config.get('model_key') or 'mimo-v2.5-pro'
+        provider = registry.create_provider(
+            provider_key,
+            api_key=model_config.get('api_key', ''),
+            base_url=model_config.get('base_url', ''),
+            provider_type=model_config.get('provider_type', ''),
+        )
+        return provider, model_key
+
+    # 2. Check custom providers with llm_text capability AND valid API key
     try:
         from server.models.provider import CustomProvider
         for cp in CustomProvider.query.all():
@@ -41,7 +53,7 @@ def get_llm_provider():
     except Exception:
         pass
 
-    # 2. Check env vars for built-in providers
+    # 3. Check env vars for built-in providers
     env_providers = [
         ('mimo', 'MIMO_API_KEY', 'mimo-v2.5-pro'),
         ('deepseek', 'DEEPSEEK_API_KEY', 'deepseek-chat'),
@@ -56,6 +68,6 @@ def get_llm_provider():
             except Exception:
                 continue
 
-    # 3. Fallback: try mimo with empty key
+    # 4. Fallback: try mimo with empty key
     provider = registry.create_provider('mimo', api_key='')
     return provider, 'mimo-v2.5-pro'

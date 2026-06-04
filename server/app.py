@@ -4,7 +4,12 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 from server.models import db
 
-load_dotenv()
+PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
+ENV_PATH = os.path.join(PROJECT_ROOT, '.env')
+
+# Always load the project .env explicitly. `override=True` makes settings saved
+# from the UI take effect after restart even if the shell had stale variables.
+load_dotenv(ENV_PATH, override=True)
 
 
 def create_app(test_config=None):
@@ -63,7 +68,8 @@ def create_app(test_config=None):
 
 def main():
     app = create_app()
-    app.run(debug=True, port=5002)
+    debug = os.environ.get('FLASK_DEBUG') == '1'
+    app.run(debug=debug, port=5002, use_reloader=False)
 
 
 if __name__ == '__main__':

@@ -4,7 +4,7 @@ from server.services.memory.retriever import retrieve_memories, format_memories_
 
 
 def generate_with_memory(project, chapter, context, system_prompt, user_instruction='',
-                         model_key=None, version_type='custom'):
+                         model_key=None, model_config=None, version_type='custom'):
     """Generate chapter content with RAG memory augmentation.
 
     Args:
@@ -14,6 +14,7 @@ def generate_with_memory(project, chapter, context, system_prompt, user_instruct
         system_prompt: System prompt from prompt_templates.
         user_instruction: User's generation instruction.
         model_key: Optional model override.
+        model_config: Optional provider config from the frontend.
         version_type: Version type for generation.
 
     Returns:
@@ -79,7 +80,7 @@ def generate_with_memory(project, chapter, context, system_prompt, user_instruct
 
     # Get LLM provider
     from server.services.novel import get_llm_provider
-    provider, default_model = get_llm_provider()
+    provider, default_model = get_llm_provider(model_config)
 
     # Call LLM
     messages = [{'role': 'user', 'content': user_prompt}]

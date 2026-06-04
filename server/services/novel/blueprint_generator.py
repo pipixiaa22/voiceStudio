@@ -1,5 +1,6 @@
 # server/services/novel/blueprint_generator.py
 import json
+import requests
 from server.models import db
 from server.models.novel.project import NovelProject
 from server.models.novel.outline import NovelOutlineNode
@@ -14,6 +15,8 @@ def generate_blueprint(project_id, params):
     if not premise:
         raise ValueError('请提供小说创意')
 
+    outline_chapters = _resolve_outline_chapter_count(project, params)
+
     # Build prompt
     system_prompt = f"""你是一位资深小说策划师，擅长根据一句话创意扩展成完整的小说蓝图。
 请根据以下信息生成完整的小说蓝图：
@@ -23,6 +26,7 @@ def generate_blueprint(project_id, params):
 目标章节数：{project.target_chapters}
 每章字数：{project.words_per_chapter}
 卷数：{project.volume_count}
+本次蓝图只生成前 {outline_chapters} 个章节节点。请不要输出超过 {outline_chapters} 个章节。
 
 请以 JSON 格式输出，包含以下字段：
 {{
@@ -59,19 +63,29 @@ def generate_blueprint(project_id, params):
   ],
   "main_conflict": "主线冲突描述",
   "key_events": ["事件1", "事件2"]
-}}"""
+}}
+
+要求：
+- 严格输出 JSON，不要使用 Markdown 代码块。
+- 角色不超过 8 个。
+- 世界观字段保持精炼。
+- 全部 volumes 下的 chapters 总数必须小于等于 {outline_chapters}。
+- 如果整体故事超过 {outline_chapters} 章，只规划开篇到第一个重要阶段目标。"""
 
     from server.services.novel import get_llm_provider
-    provider, default_model = get_llm_provider()
+    provider, default_model = get_llm_provider(params.get('model_config'))
 
     messages = [{'role': 'user', 'content': f'一句话创意：{premise}'}]
-    response = provider.complete(
-        messages,
-        model=default_model,
-        system_prompt=system_prompt,
-        max_tokens=8192,
-        timeout=120,
-    )
+    try:
+        response = provider.complete(
+            messages,
+            model=default_model,
+            system_prompt=system_prompt,
+            max_tokens=2048,
+            timeout=35,
+        )
+    except requests.Timeout:
+        response = json.dumps(_build_timeout_fallback_blueprint(project, premise, outline_chapters), ensure_ascii=False)
 
     # Parse response
     result = _parse_json_response(response)
@@ -130,6 +144,8 @@ def generate_blueprint(project_id, params):
         db.session.flush()
 
         for ch_idx, chapter in enumerate(volume.get('chapters', []), 1):
+            if chapter_order >= outline_chapters:
+                break
             chapter_order += 1
             ch_node = NovelOutlineNode(
                 project_id=project_id,
@@ -143,6 +159,8 @@ def generate_blueprint(project_id, params):
                 conflict_goal=chapter.get('conflict_goal'),
             )
             db.session.add(ch_node)
+        if chapter_order >= outline_chapters:
+            break
 
     db.session.commit()
 
@@ -152,6 +170,49 @@ def generate_blueprint(project_id, params):
         'characters_created': len(char_entities) + (1 if main_char.get('name') else 0),
         'volumes_created': len(result.get('volumes', [])),
         'chapters_created': chapter_order,
+    }
+
+
+def _resolve_outline_chapter_count(project, params):
+    requested = params.get('outline_chapters') or params.get('chapter_count') or 8
+    try:
+        requested = int(requested)
+    except (TypeError, ValueError):
+        requested = 8
+    return max(3, min(requested, project.target_chapters or requested, 8))
+
+
+def _build_timeout_fallback_blueprint(project, premise, outline_chapters):
+    title = project.title if project.title and project.title != '未命名小说' else '未命名小说'
+    chapters = []
+    for idx in range(1, outline_chapters + 1):
+        chapters.append({
+            'title': f'第{idx}章',
+            'summary': f'围绕「{premise}」推进第{idx}个关键剧情节点。',
+            'plot_goal': '建立主线、推进人物选择与阶段目标。',
+            'conflict_goal': '制造阻碍、误解或外部压力，让主角必须行动。',
+            'target_words': project.words_per_chapter,
+        })
+    return {
+        'title': title,
+        'premise': premise,
+        'main_character': {
+            'name': '主角',
+            'summary': '围绕核心创意展开成长与抉择的中心人物。',
+            'attributes': {},
+        },
+        'characters': [],
+        'world_settings': {
+            'genre': project.genre,
+            'note': 'AI 蓝图请求超时，已生成可编辑的起步结构。',
+        },
+        'volumes': [{
+            'title': '第一卷',
+            'summary': '建立世界、人物目标和第一阶段主线冲突。',
+            'chapters': chapters,
+        }],
+        'main_conflict': f'围绕「{premise}」展开的核心目标与阻碍。',
+        'key_events': ['开端事件', '第一次选择', '阶段危机'],
     }
 
 
