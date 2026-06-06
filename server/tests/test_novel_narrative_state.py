@@ -7,7 +7,7 @@ from server.models.novel.chapter import NovelChapter
 from server.models.novel.entity import NovelEntity, NovelRelation
 from server.models.novel.event import NovelEvent, NovelEventRelation
 from server.models.novel.memory import NovelMemory
-from server.services.novel.narrative_state import load_state, NarrativeState
+from server.services.novel.narrative_state import load_state, NarrativeState, summarize_for_context
 
 
 @pytest.fixture
@@ -140,3 +140,45 @@ def test_load_state_empty_project(app):
     assert state.characters == []
     assert state.events == []
     assert state.memories == []
+
+
+def test_summarize_for_context_returns_dict(full_project):
+    state = load_state(full_project.id)
+    context = summarize_for_context(state)
+    assert isinstance(context, dict)
+    assert 'overall_outline' in context
+    assert 'volume_outline' in context
+    assert 'outline' in context
+    assert 'characters' in context
+    assert 'events' in context
+    assert 'foreshadowing' in context
+    assert 'world_building' in context
+    assert 'target_words' in context
+
+
+def test_summarize_for_context_overall_outline(full_project):
+    state = load_state(full_project.id)
+    context = summarize_for_context(state)
+    assert '少年成长为主线' in context['overall_outline']
+    assert '大团圆' in context['overall_outline']
+
+
+def test_summarize_for_context_volume_outline(full_project):
+    state = load_state(full_project.id)
+    context = summarize_for_context(state)
+    assert '第一卷' in context['volume_outline']
+    assert '建立世界' in context['volume_outline']
+
+
+def test_summarize_for_context_chapter_outline(full_project):
+    state = load_state(full_project.id)
+    context = summarize_for_context(state)
+    assert '第一章' in context['outline']
+    assert '踏上旅途' in context['outline']
+
+
+def test_summarize_for_context_budget_truncation(full_project):
+    state = load_state(full_project.id)
+    context = summarize_for_context(state, max_budget=200)
+    total = sum(len(str(v)) for v in context.values())
+    assert total <= 2000  # generous bound for truncation
