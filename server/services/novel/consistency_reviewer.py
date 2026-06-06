@@ -1,5 +1,4 @@
 # server/services/novel/consistency_reviewer.py
-import json
 from server.models import db
 from server.models.novel.chapter import NovelChapter
 from server.models.novel.project import NovelProject
@@ -90,7 +89,8 @@ def _do_review(project_id, chapter_id, content, context, params=None):
         timeout=60,
     )
 
-    result = _parse_json_response(response)
+    from server.services.memory.utils import parse_memory_json
+    result = parse_memory_json(response) or {}
 
     return {
         'chapter_id': chapter_id,
@@ -98,22 +98,3 @@ def _do_review(project_id, chapter_id, content, context, params=None):
         'overall_score': result.get('overall_score', 0),
         'summary': result.get('summary', ''),
     }
-
-
-def _parse_json_response(text):
-    import re
-    json_match = re.search(r'```json\s*(.*?)\s*```', text, re.DOTALL)
-    if json_match:
-        return json.loads(json_match.group(1))
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-    start = text.find('{')
-    end = text.rfind('}')
-    if start >= 0 and end > start:
-        try:
-            return json.loads(text[start:end + 1])
-        except json.JSONDecodeError:
-            pass
-    raise ValueError('无法解析 AI 返回的 JSON')

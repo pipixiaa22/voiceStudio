@@ -1,7 +1,5 @@
-from server.models.novel.project import NovelProject
 from server.models.novel.chapter import NovelChapter
 from server.models.novel.entity import NovelEntity, NovelRelation
-from server.models.novel.event import NovelEvent, NovelEventRelation
 from server.services.novel.narrative_state import load_state, summarize_for_context
 
 

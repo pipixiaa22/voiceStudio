@@ -159,7 +159,10 @@ def generate_blueprint(project_id, params):
         response = json.dumps(_build_timeout_fallback_blueprint(project, premise, outline_chapters), ensure_ascii=False)
 
     # Parse response
-    result = _parse_json_response(response)
+    from server.services.memory.utils import parse_memory_json
+    result = parse_memory_json(response)
+    if not result:
+        raise ValueError('无法解析 AI 返回的 JSON')
 
     # Update project
     if result.get('title'):
@@ -475,27 +478,3 @@ def _build_timeout_fallback_blueprint(project, premise, outline_chapters):
     }
 
 
-def _parse_json_response(text):
-    """Extract JSON from LLM response."""
-    # Try to find JSON block
-    import re
-    json_match = re.search(r'```json\s*(.*?)\s*```', text, re.DOTALL)
-    if json_match:
-        return json.loads(json_match.group(1))
-
-    # Try the whole text
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-
-    # Try to find first { and last }
-    start = text.find('{')
-    end = text.rfind('}')
-    if start >= 0 and end > start:
-        try:
-            return json.loads(text[start:end + 1])
-        except json.JSONDecodeError:
-            pass
-
-    raise ValueError('无法解析 AI 返回的 JSON')
