@@ -18,10 +18,17 @@ def review_chapter(project_id, chapter_id, params=None):
         raise ValueError('章节内容为空')
 
     # Build review context
+    from server.services.novel.narrative_state import load_state, summarize_for_context
+    state = load_state(project_id, chapter_id)
+    state_context = summarize_for_context(state)
+
     context = {
         'characters': _build_character_context(project_id, chapter),
         'previous_summaries': _build_previous_summaries(project_id, chapter),
         'world_rules': _format_world_rules(project.settings),
+        'overall_outline': state_context.get('overall_outline', ''),
+        'volume_outline': state_context.get('volume_outline', ''),
+        'outline': state_context.get('outline', ''),
     }
 
     return _do_review(project_id, chapter_id, chapter.content_markdown, context, params=params)
@@ -41,10 +48,17 @@ def review_content(project_id, chapter_id, content, params=None):
     project = NovelProject.query.get_or_404(project_id)
     chapter = NovelChapter.query.get_or_404(chapter_id)
 
+    from server.services.novel.narrative_state import load_state, summarize_for_context
+    state = load_state(project_id, chapter_id)
+    state_context = summarize_for_context(state)
+
     context = {
         'characters': _build_character_context(project_id, chapter),
         'previous_summaries': _build_previous_summaries(project_id, chapter),
         'world_rules': _format_world_rules(project.settings),
+        'overall_outline': state_context.get('overall_outline', ''),
+        'volume_outline': state_context.get('volume_outline', ''),
+        'outline': state_context.get('outline', ''),
     }
 
     return _do_review(project_id, chapter_id, content, context, params=params)

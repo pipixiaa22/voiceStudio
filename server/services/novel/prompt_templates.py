@@ -66,7 +66,14 @@ def get_version_modifier(version_type):
 
 def build_chapter_system_prompt(genre, version_type=None, style_guide=None):
     template = get_genre_template(genre)
-    parts = [template['system']]
+    parts = [
+        template['system'],
+        (
+            '你正在执行小说续写任务。必须紧接前文承接人物状态、场景位置、情绪张力和未解决冲突；'
+            '优先推进本章目标，并为下一节点保留自然钩子。不要复述前文、不要重写已经发生的情节、'
+            '不要无铺垫跳场或跳时间、不要擅自完结主线。'
+        ),
+    ]
 
     if version_type:
         modifier = get_version_modifier(version_type)
@@ -96,6 +103,9 @@ def build_chapter_user_prompt(context):
     if context.get('outline'):
         parts.append(f'【本章大纲】\n{context["outline"]}')
 
+    if context.get('continuation_brief'):
+        parts.append(f'【续写简报】\n{context["continuation_brief"]}')
+
     if context.get('previous_summaries'):
         parts.append(f'【前文摘要】\n{context["previous_summaries"]}')
 
@@ -115,6 +125,7 @@ def build_chapter_user_prompt(context):
         parts.append(f'【未回收伏笔】\n{context["foreshadowing"]}')
 
     parts.append(f'目标字数：{context.get("target_words", 3000)} 字')
+    parts.append('续写要求：紧接前文自然展开；优先写新剧情推进；保留人物口吻和因果连续性；避免重复摘要式开场。')
     parts.append('请直接输出正文 Markdown，不要输出其他内容。')
 
     return '\n\n'.join(parts)
@@ -151,6 +162,12 @@ def build_extract_prompt(chapter_content):
 def build_review_prompt(chapter_content, context):
     parts = ['请对以下章节进行一致性审稿。']
 
+    if context.get('overall_outline'):
+        parts.append(f'【总大纲：全书走向】\n{context["overall_outline"]}')
+    if context.get('volume_outline'):
+        parts.append(f'【卷大纲：阶段方向】\n{context["volume_outline"]}')
+    if context.get('outline'):
+        parts.append(f'【章大纲：本章情节】\n{context["outline"]}')
     if context.get('characters'):
         parts.append(f'【已有人物设定】\n{context["characters"]}')
     if context.get('world_rules'):
@@ -168,6 +185,9 @@ def build_review_prompt(chapter_content, context):
 7. 本章是否推进了冲突
 8. 是否与前文重复
 9. 是否水文（无意义的填充内容）
+10. 是否偏离总大纲方向（提前完结主线、逆转结局方向、违反主题）
+11. 是否偏离卷大纲目标（跳过本卷冲突、提前进入下一卷阶段）
+12. 是否偏离章大纲目标（未完成本章剧情目标、未推进本章冲突）
 
 请以 JSON 格式输出：
 {{
