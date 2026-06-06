@@ -89,10 +89,10 @@ def test_accept_version(client, project, chapter):
 def test_generate_versions_raises_when_all_versions_fail(app, project, chapter, monkeypatch):
     from server.services.novel import version_generator
 
-    def fail_generation(**kwargs):
+    def fail_workflow(**kwargs):
         raise ValueError('llm key missing')
 
-    monkeypatch.setattr(version_generator, 'generate_single_version', fail_generation)
+    monkeypatch.setattr(version_generator, 'run_chapter_workflow', fail_workflow)
 
     with pytest.raises(RuntimeError, match='steady: llm key missing'):
         version_generator.generate_versions(project.id, chapter.id, {

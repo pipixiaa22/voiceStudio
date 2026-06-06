@@ -139,22 +139,6 @@ def generate_versions(project_id, chapter_id):
     return jsonify(gen.to_dict()), 202
 
 
-@novels_bp.route('/api/novels/<int:project_id>/chapters/<int:chapter_id>/generate-workflow', methods=['POST'])
-def generate_workflow(project_id, chapter_id):
-    chapter = NovelChapter.query.get_or_404(chapter_id)
-    if chapter.project_id != project_id:
-        return jsonify({'error': '章节不属于该项目'}), 400
-
-    data = request.get_json() or {}
-    from server.services.novel.generation_runner import start_generation
-    gen = start_generation(
-        project_id=project_id,
-        generation_type='chapter_workflow',
-        target_id=chapter_id,
-        params=data,
-    )
-    return jsonify(gen.to_dict()), 202
-
 
 @novels_bp.route('/api/novels/<int:project_id>/chapters/<int:chapter_id>/versions', methods=['GET'])
 def list_versions(project_id, chapter_id):

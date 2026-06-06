@@ -64,7 +64,7 @@ def start_generation(project_id, generation_type, target_id=None, params=None):
         return gen
 
     # Check chapter-level lock for chapter_version and extract
-    if generation_type in ('chapter_version', 'extract', 'review', 'chapter_workflow') and target_id:
+    if generation_type in ('chapter_version', 'extract', 'review') and target_id:
         lock_key = redis_key('novel', 'lock', generation_type, str(target_id))
         r = get_redis()
         if r is not None:
@@ -126,8 +126,6 @@ def _run_generation(gen_id, params, lock_key, token):
                 _run_extract(gen, params)
             elif gen.generation_type == 'review':
                 _run_review(gen, params)
-            elif gen.generation_type == 'chapter_workflow':
-                _run_chapter_workflow(gen, params)
             else:
                 raise ValueError(f'未知的生成类型: {gen.generation_type}')
 
@@ -157,10 +155,39 @@ def _run_blueprint(gen, params):
 
 
 def _run_chapter_version(gen, params):
-    from server.services.novel.version_generator import generate_versions
+    from server.services.memory.workflow import run_chapter_workflow
     _update_progress(gen, 10)
-    result = generate_versions(gen.project_id, gen.target_id, params)
-    gen.result = result
+    version_types = params.get('version_types', ['steady'])
+    user_instruction = params.get('user_instruction', '')
+    model_key = params.get('model_key')
+    model_config = params.get('model_config')
+
+    versions = []
+    errors = []
+    for i, vtype in enumerate(version_types):
+        try:
+            _update_progress(gen, 10 + int(80 * i / max(len(version_types), 1)))
+            result = run_chapter_workflow(
+                project_id=gen.project_id,
+                chapter_id=gen.target_id,
+                user_instruction=user_instruction,
+                version_type=vtype,
+                model_key=model_key,
+                model_config=model_config,
+            )
+            if result.get('version_id'):
+                from server.models.novel.chapter import NovelChapterVersion
+                version = NovelChapterVersion.query.get(result['version_id'])
+                if version:
+                    versions.append(version.to_dict())
+        except Exception as e:
+            errors.append({'version_type': vtype, 'error': str(e)})
+
+    if not versions:
+        error_text = '; '.join(f"{e['version_type']}: {e['error']}" for e in errors)
+        raise RuntimeError(error_text or '没有生成任何续写版本')
+
+    gen.result = {'versions': versions, 'errors': errors}
     _update_progress(gen, 100)
 
 
@@ -180,21 +207,3 @@ def _run_review(gen, params):
     _update_progress(gen, 100)
 
 
-def _run_chapter_workflow(gen, params):
-    """Run the LangGraph chapter workflow."""
-    from server.services.memory.workflow import run_chapter_workflow
-
-    result = run_chapter_workflow(
-        project_id=gen.project_id,
-        chapter_id=gen.target_id,
-        user_instruction=params.get('user_instruction', ''),
-        version_type=params.get('version_type', 'custom'),
-        model_key=params.get('model_key'),
-        model_config=params.get('model_config'),
-    )
-
-    gen.result = {
-        'version_id': result.get('version_id'),
-        'memory_changes': result.get('memory_changes', []),
-        'conflicts': result.get('conflicts', []),
-    }
