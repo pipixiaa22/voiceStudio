@@ -96,7 +96,7 @@ class NovelChapterVersion(db.Model):
         self.context_snapshot_json = _json_dumps(value)
 
     def to_dict(self):
-        return {
+        data = {
             'id': self.id,
             'chapter_id': self.chapter_id,
             'version_type': self.version_type,
@@ -106,3 +106,11 @@ class NovelChapterVersion(db.Model):
             'accepted': self.accepted,
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
+        snapshot = self.context_snapshot
+        if snapshot and isinstance(snapshot, dict) and snapshot.get('chapter_state'):
+            data['chapter_state'] = snapshot['chapter_state']
+        if hasattr(self, 'generated_graph_changes'):
+            data['generated_graph_changes'] = self.generated_graph_changes
+        if hasattr(self, 'generated_memory_changes'):
+            data['generated_memory_changes'] = self.generated_memory_changes
+        return data
