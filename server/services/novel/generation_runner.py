@@ -122,6 +122,8 @@ def _run_generation(gen_id, params, lock_key, token):
                 _run_blueprint(gen, params)
             elif gen.generation_type == 'chapter_version':
                 _run_chapter_version(gen, params)
+            elif gen.generation_type == 'auto_continue':
+                _run_auto_continue(gen, params)
             elif gen.generation_type == 'extract':
                 _run_extract(gen, params)
             elif gen.generation_type == 'review':
@@ -203,6 +205,14 @@ def _run_review(gen, params):
     from server.services.novel.consistency_reviewer import review_chapter
     _update_progress(gen, 10)
     result = review_chapter(gen.project_id, gen.target_id, params)
+    gen.result = result
+    _update_progress(gen, 100)
+
+
+def _run_auto_continue(gen, params):
+    from server.services.novel.auto_continue import run_auto_continue
+    _update_progress(gen, 10)
+    result = run_auto_continue(gen.project_id, params)
     gen.result = result
     _update_progress(gen, 100)
 

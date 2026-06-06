@@ -180,3 +180,17 @@ def delete_version(project_id, chapter_id, version_id):
     db.session.delete(version)
     db.session.commit()
     return '', 204
+
+
+@novels_bp.route('/api/novels/<int:project_id>/auto-continue', methods=['POST'])
+def auto_continue(project_id):
+    NovelProject.query.get_or_404(project_id)
+    data = request.get_json() or {}
+
+    from server.services.novel.generation_runner import start_generation
+    gen = start_generation(
+        project_id=project_id,
+        generation_type='auto_continue',
+        params=data,
+    )
+    return jsonify(gen.to_dict()), 202
