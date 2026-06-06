@@ -211,3 +211,24 @@ def test_generate_single_version_backward_compat_no_chapter_state(app, project, 
 def test_delete_chapter(client, project, chapter):
     resp = client.delete(f'/api/novels/{project.id}/chapters/{chapter.id}')
     assert resp.status_code == 204
+
+
+def test_resolve_outline_chapter_count_by_depth(app):
+    from server.services.novel.blueprint_generator import _resolve_outline_chapter_count
+    from server.models.novel.project import NovelProject
+
+    p = NovelProject(title='test', target_chapters=100)
+    db.session.add(p)
+    db.session.commit()
+
+    # Quick: fewer chapters
+    quick = _resolve_outline_chapter_count(p, {'depth': 'quick'})
+    assert quick <= 8
+
+    # Standard: default behavior
+    standard = _resolve_outline_chapter_count(p, {'depth': 'standard'})
+    assert 3 <= standard <= 12
+
+    # Deep: more chapters
+    deep = _resolve_outline_chapter_count(p, {'depth': 'deep'})
+    assert deep >= standard
