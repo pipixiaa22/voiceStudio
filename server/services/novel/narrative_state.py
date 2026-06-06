@@ -57,9 +57,13 @@ def load_state(project_id, chapter_id=None):
         project_id=project_id, entity_type='character',
     ).order_by(NovelEntity.importance.desc()).limit(10).all()
 
-    # Relations (active, up to 20)
+    # Relations (active, up to 20, eagerly load entities)
+    from sqlalchemy.orm import joinedload
     relations = NovelRelation.query.filter_by(
         project_id=project_id, status='active',
+    ).options(
+        joinedload(NovelRelation.source_entity),
+        joinedload(NovelRelation.target_entity),
     ).limit(20).all()
 
     # Events (up to 10 by timeline)
@@ -67,9 +71,12 @@ def load_state(project_id, chapter_id=None):
         project_id=project_id,
     ).order_by(NovelEvent.timeline_order.desc()).limit(10).all()
 
-    # Event relations (up to 10)
+    # Event relations (up to 10, eagerly load events)
     event_relations = NovelEventRelation.query.filter_by(
         project_id=project_id,
+    ).options(
+        joinedload(NovelEventRelation.source_event),
+        joinedload(NovelEventRelation.target_event),
     ).limit(10).all()
 
     # Memories (active, up to 15 by importance)
@@ -77,9 +84,14 @@ def load_state(project_id, chapter_id=None):
         project_id=project_id, status='active',
     ).order_by(NovelMemory.importance.desc()).limit(15).all()
 
-    # Open foreshadowing from outline nodes
+    # Open foreshadowing from outline nodes (only load nodes that have foreshadowing)
     open_foreshadowing = []
-    nodes = NovelOutlineNode.query.filter_by(project_id=project_id).all()
+    nodes = NovelOutlineNode.query.filter(
+        NovelOutlineNode.project_id == project_id,
+        NovelOutlineNode.foreshadowing_json.isnot(None),
+        NovelOutlineNode.foreshadowing_json != '[]',
+        NovelOutlineNode.foreshadowing_json != '',
+    ).all()
     for node in nodes:
         if node.foreshadowing:
             open_foreshadowing.extend(node.foreshadowing)
@@ -110,43 +122,58 @@ def load_state(project_id, chapter_id=None):
 
 
 def summarize_for_context(state, max_budget=12000):
-    """Produce a context dict compatible with context_builder.build_context() format."""
-    context = {}
+    """Produce a context dict compatible with context_builder.build_context() format.
 
-    # 1. Overall outline
+    Enforces max_budget by tracking used characters and truncating remaining sections.
+    Priority order: outline > continuation brief > text tail > summaries > characters > events > world > foreshadowing.
+    """
+    context = {}
+    used = 0
+
+    def _add(key, text, limit):
+        nonlocal used
+        remaining = max_budget - used
+        if remaining <= 0:
+            context[key] = ''
+            return
+        actual_limit = min(limit, remaining)
+        context[key] = _truncate(text, actual_limit)
+        used += len(context[key])
+
+    # 1. Overall outline (high priority)
     text = _format_overall_outline(state)
-    context['overall_outline'] = _truncate(text, 1800)
+    _add('overall_outline', text, 1800)
 
     # 2. Volume outline
     text = _format_outline_node(state.current_volume, '卷大纲')
-    context['volume_outline'] = _truncate(text, 1800)
+    _add('volume_outline', text, 1800)
 
     # 3. Chapter outline
     text = _format_outline_node(state.current_chapter_outline, '章大纲')
-    context['outline'] = _truncate(text, 1800)
+    _add('outline', text, 1800)
 
     # 4. Continuation brief
-    context['continuation_brief'] = _build_continuation_brief(state)
+    _add('continuation_brief', _build_continuation_brief(state), 1800)
 
     # 5. Text tail
-    context['text_tail'] = _build_text_tail(state)
+    _add('text_tail', _build_text_tail(state), 3000)
 
     # 6. Previous summaries
-    context['previous_summaries'] = _build_previous_summaries(state)
+    _add('previous_summaries', _build_previous_summaries(state), 2500)
 
     # 7. Characters
-    context['characters'] = _format_characters(state, 3000)
+    _add('characters', _format_characters(state, 3000), 3000)
 
     # 8. Events
-    context['events'] = _format_events(state, 1500)
+    _add('events', _format_events(state, 1500), 1500)
 
     # 9. World building
-    context['world_building'] = _truncate(_format_world_settings(state.world_settings), 1500)
+    _add('world_building', _format_world_settings(state.world_settings), 1500)
 
     # 10. Foreshadowing
-    context['foreshadowing'] = _format_foreshadowing(state)
+    _add('foreshadowing', _format_foreshadowing(state), 1000)
 
-    # 11. Target words
+    # 11. Target words (always included, not budgeted)
     if state.current_chapter_outline and state.current_chapter_outline.target_words:
         context['target_words'] = state.current_chapter_outline.target_words
     else:
@@ -204,10 +231,16 @@ def _build_continuation_brief(state):
     project = state.project
     chapter = None
     if state.current_chapter_outline:
-        chapter = NovelChapter.query.filter_by(
-            project_id=project.id,
-            outline_node_id=state.current_chapter_outline.id,
-        ).first()
+        # Search in-memory first to avoid N+1 query
+        for ch in state.recent_chapters:
+            if ch.outline_node_id == state.current_chapter_outline.id:
+                chapter = ch
+                break
+        if not chapter:
+            chapter = NovelChapter.query.filter_by(
+                project_id=project.id,
+                outline_node_id=state.current_chapter_outline.id,
+            ).first()
 
     if not chapter:
         return ''

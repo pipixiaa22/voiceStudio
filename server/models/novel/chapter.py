@@ -17,7 +17,7 @@ def _json_loads(value, default):
 
 
 def _json_dumps(value):
-    return json.dumps(value or {}, ensure_ascii=False)
+    return json.dumps(value if value is not None else {}, ensure_ascii=False)
 
 
 class NovelChapter(db.Model):

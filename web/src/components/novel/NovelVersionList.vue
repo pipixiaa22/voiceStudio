@@ -32,9 +32,13 @@
         <div class="version-preview">
           {{ (v.content_markdown || '').slice(0, 120) }}{{ (v.content_markdown || '').length > 120 ? '...' : '' }}
         </div>
-        <div class="version-content">
-          {{ v.content_markdown || '这个版本没有生成正文。' }}
-        </div>
+        <a-collapse v-if="v.content_markdown && v.content_markdown.length > 120" size="small" ghost>
+          <a-collapse-panel key="content" header="展开全文">
+            <div class="version-content">
+              {{ v.content_markdown }}
+            </div>
+          </a-collapse-panel>
+        </a-collapse>
         <div class="version-actions">
           <a-button size="small" @click="handlePreview(v)">放入编辑器</a-button>
           <a-button size="small" type="primary" @click="handleAccept(v)" :disabled="v.accepted">采纳</a-button>
@@ -64,8 +68,10 @@ const formatDate = (iso) => {
 }
 
 const handlePreview = (v) => {
-  store.currentChapter.content_markdown = v.content_markdown
-  store.dirty = true
+  if (store.currentChapter) {
+    store.currentChapter = { ...store.currentChapter, content_markdown: v.content_markdown }
+    store.dirty = true
+  }
 }
 
 const handleAccept = async (v) => {

@@ -69,7 +69,7 @@ const knowledgeIncrement = computed(() => {
   const result = gen.result
   if (!result?.versions) return null
   const graphChanges = result.versions.reduce((sum, v) => sum + (v.generated_graph_changes?.length || 0), 0)
-  const memoryChanges = store.memoryChanges?.length || 0
+  const memoryChanges = result.versions.reduce((sum, v) => sum + (v.generated_memory_changes?.length || 0), 0)
   return { graphChanges, memoryChanges }
 })
 const directionOptions = [

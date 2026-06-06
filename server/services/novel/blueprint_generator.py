@@ -172,8 +172,9 @@ def generate_blueprint(project_id, params):
 
     # Create main character
     main_char = result.get('main_character', {})
+    char_entities = {}
     if main_char.get('name'):
-        entity = NovelEntity(
+        main_entity = NovelEntity(
             project_id=project_id,
             entity_type='character',
             name=main_char['name'],
@@ -181,14 +182,12 @@ def generate_blueprint(project_id, params):
             importance=10,
         )
         if main_char.get('attributes'):
-            entity.attributes = main_char['attributes']
-        db.session.add(entity)
+            main_entity.attributes = main_char['attributes']
+        db.session.add(main_entity)
         db.session.flush()
+        char_entities[main_char['name']] = main_entity
 
     # Create other characters
-    char_entities = {}
-    if main_char.get('name') and 'entity' in locals():
-        char_entities[main_char['name']] = entity
     for char in result.get('characters', []):
         if not char.get('name'):
             continue
