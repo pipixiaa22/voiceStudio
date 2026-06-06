@@ -15,11 +15,28 @@
         <div class="version-meta">
           {{ v.content_markdown?.length || 0 }} 字 · {{ formatDate(v.created_at) }}
         </div>
+        <div v-if="v.chapter_state" class="version-state">
+          <div v-if="v.chapter_state.completed_plot_goals?.length" class="state-section">
+            <span class="state-label">已完成目标</span>
+            <a-tag v-for="g in v.chapter_state.completed_plot_goals" :key="g" color="green" size="small">{{ g }}</a-tag>
+          </div>
+          <div v-if="v.chapter_state.open_threads?.length" class="state-section">
+            <span class="state-label">未解决悬念</span>
+            <a-tag v-for="t in v.chapter_state.open_threads" :key="t" color="orange" size="small">{{ t }}</a-tag>
+          </div>
+          <div v-if="v.chapter_state.next_chapter_hooks?.length" class="state-section">
+            <span class="state-label">下章钩子</span>
+            <a-tag v-for="h in v.chapter_state.next_chapter_hooks" :key="h" color="blue" size="small">{{ h }}</a-tag>
+          </div>
+        </div>
         <div class="version-preview">
-          {{ (v.content_markdown || '').slice(0, 120) }}...
+          {{ (v.content_markdown || '').slice(0, 120) }}{{ (v.content_markdown || '').length > 120 ? '...' : '' }}
+        </div>
+        <div class="version-content">
+          {{ v.content_markdown || '这个版本没有生成正文。' }}
         </div>
         <div class="version-actions">
-          <a-button size="small" @click="handlePreview(v)">预览</a-button>
+          <a-button size="small" @click="handlePreview(v)">放入编辑器</a-button>
           <a-button size="small" type="primary" @click="handleAccept(v)" :disabled="v.accepted">采纳</a-button>
           <a-popconfirm title="删除此版本？" @confirm="handleDelete(v)">
             <a-button size="small" danger>删除</a-button>
@@ -48,6 +65,7 @@ const formatDate = (iso) => {
 
 const handlePreview = (v) => {
   store.currentChapter.content_markdown = v.content_markdown
+  store.dirty = true
 }
 
 const handleAccept = async (v) => {
@@ -80,5 +98,21 @@ const handleDelete = async (v) => {
 .version-header { display: flex; gap: 4px; margin-bottom: 4px; }
 .version-meta { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
 .version-preview { font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; line-height: 1.5; }
+.version-content {
+  max-height: 260px;
+  overflow: auto;
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid var(--surface-border);
+  border-radius: 4px;
+  background: var(--surface-subtle, #fafafa);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+}
 .version-actions { display: flex; gap: 4px; }
+.version-state { margin-bottom: 8px; }
+.state-section { margin-bottom: 4px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.state-label { font-size: 11px; color: var(--text-muted); margin-right: 4px; }
 </style>
