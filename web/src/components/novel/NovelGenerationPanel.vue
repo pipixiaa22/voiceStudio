@@ -2,7 +2,7 @@
   <div class="novel-generation-panel">
     <div v-if="store.generation?.status === 'running' || store.generation?.status === 'pending'" class="gen-progress">
       <a-progress :percent="store.generation.progress" status="active" />
-      <p>{{ store.generation.status === 'pending' ? '等待中...' : '生成中...' }}</p>
+      <p>{{ progressText }}</p>
     </div>
     <a-alert
       v-else-if="store.generation?.status === 'failed'"
@@ -50,8 +50,21 @@
         <a-button type="primary" block :disabled="!canGenerate" @click="handleGenerate">
           {{ canGenerate ? '生成续写版本' : '请先选择章节' }}
         </a-button>
+        <a-button block @click="showAutoContinue = true" style="margin-top: 8px;">
+          连续续写
+        </a-button>
       </a-form>
     </template>
+    <a-modal v-model:open="showAutoContinue" title="连续续写" @ok="handleAutoContinue" ok-text="开始">
+      <a-form layout="vertical">
+        <a-form-item label="续写章节数">
+          <a-slider v-model:value="autoContinueCount" :min="2" :max="5" :marks="{2:'2', 3:'3', 4:'4', 5:'5'}" />
+        </a-form-item>
+        <a-form-item label="版本方向">
+          <a-select v-model:value="autoContinueType" :options="directionOptions.map(o => ({value: o.value, label: o.label}))" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
@@ -63,6 +76,21 @@ import { useNovelsStore } from '../../stores/novels'
 const store = useNovelsStore()
 const versionType = ref('steady')
 const userInstruction = ref('')
+const showAutoContinue = ref(false)
+const autoContinueCount = ref(3)
+const autoContinueType = ref('steady')
+
+const handleAutoContinue = async () => {
+  showAutoContinue.value = false
+  try {
+    await store.startAutoContinue({
+      count: autoContinueCount.value,
+      version_type: autoContinueType.value,
+    })
+  } catch (e) {
+    message.error('连续续写失败: ' + (e.response?.data?.error || e.message))
+  }
+}
 const knowledgeIncrement = computed(() => {
   const gen = store.generation
   if (!gen || gen.status !== 'completed' || gen.generation_type !== 'chapter_version') return null
@@ -81,6 +109,17 @@ const directionOptions = [
   { value: 'polish', label: '文风精修', desc: '保留剧情，优化表达' },
 ]
 const canGenerate = computed(() => !!store.currentChapter)
+const progressText = computed(() => {
+  const gen = store.generation
+  if (!gen) return ''
+  if (gen.status === 'pending') return '等待中...'
+  if (gen.generation_type === 'auto_continue' && gen.result?.chapters) {
+    const total = gen.result.chapters.length + (gen.progress < 100 ? 1 : 0)
+    return `正在生成第 ${gen.result.chapters.length + 1}/${total} 章...`
+  }
+  return '生成中...'
+})
+
 const generationHint = computed(() => {
   if (!store.currentChapter) return '从左侧选择章节，或先创建第一章。'
   if (store.dirty) return '生成前会自动保存当前未保存内容。'
