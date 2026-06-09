@@ -1,35 +1,44 @@
 # server/services/novel/version_generator.py
-from server.models import db
-from server.models.novel.chapter import NovelChapterVersion
-from server.services.novel.chapter_generator import generate_single_version
+from server.services.memory.workflow import run_chapter_workflow
 
 
 DEFAULT_VERSION_TYPES = ['steady', 'conflict', 'suspense']
 
 
 def generate_versions(project_id, chapter_id, params):
-    """Generate multiple versions for a chapter."""
+    """Generate multiple versions for a chapter using the unified pipeline."""
     version_types = params.get('version_types', DEFAULT_VERSION_TYPES)
     user_instruction = params.get('user_instruction', '')
     model_key = params.get('model_key')
     model_config = params.get('model_config')
 
     results = []
+    errors = []
     for vtype in version_types:
         try:
-            version = generate_single_version(
+            result = run_chapter_workflow(
                 project_id=project_id,
                 chapter_id=chapter_id,
-                version_type=vtype,
                 user_instruction=user_instruction,
+                version_type=vtype,
                 model_key=model_key,
                 model_config=model_config,
             )
-            results.append(version.to_dict())
+            if result.get('version_id'):
+                from server.models.novel.chapter import NovelChapterVersion
+                version = NovelChapterVersion.query.get(result['version_id'])
+                if version:
+                    results.append(version.to_dict())
         except Exception as e:
-            results.append({
+            errors.append({
                 'version_type': vtype,
                 'error': str(e),
             })
 
-    return {'versions': results}
+    if not results:
+        error_text = '; '.join(
+            f"{item['version_type']}: {item['error']}" for item in errors
+        )
+        raise RuntimeError(error_text or '没有生成任何续写版本')
+
+    return {'versions': results, 'errors': errors}

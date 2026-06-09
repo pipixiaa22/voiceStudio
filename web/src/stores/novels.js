@@ -5,21 +5,20 @@ import { useModelSettings } from './modelSettings'
 
 function getNovelModelConfig() {
   const { resolveUsage } = useModelSettings()
-  const resolved = resolveUsage('script_polish') || resolveUsage('voice_prompt_polish')
+  const resolved = resolveUsage('novel_continuation')
   if (resolved?.api_key) {
-    const mimoLlmKey = localStorage.getItem('mimo_llm_key') || ''
-    if (resolved.provider_key === 'mimo' && mimoLlmKey) {
-      return { ...resolved, api_key: mimoLlmKey }
+    if (resolved.provider_key !== 'mimo') {
+      return resolved
     }
-    return resolved
   }
 
-  const fallbackKey = localStorage.getItem('mimo_llm_key') || localStorage.getItem('mimo_tts_key') || ''
+  const fallbackKey = localStorage.getItem('novel_deepseek_llm_key') || localStorage.getItem('deepseek_api_key') || ''
   if (!fallbackKey) return null
   return {
-    provider_key: 'mimo',
-    model_key: 'mimo-v2.5-pro',
+    provider_key: 'deepseek',
+    model_key: 'deepseek-chat',
     api_key: fallbackKey,
+    base_url: localStorage.getItem('novel_deepseek_base_url') || 'https://api.deepseek.com',
   }
 }
 
@@ -155,12 +154,21 @@ export const useNovelsStore = defineStore('novels', {
         this.generationEventSource = null
       }
       this.generation = null
+      this.currentChapter = null
+      this.versions = []
+      this.dirty = false
+      this.saveError = null
+      this.activeMode = 'write'
+      this.rightTab = 'generation'
       const { data } = await novelsApi.getProject(projectId)
       this.currentProject = data
       await Promise.all([
         this.fetchOutline(projectId),
         this.fetchChapters(projectId),
       ])
+      if (this.chapters.length) {
+        await this.loadChapter(projectId, this.chapters[0].id)
+      }
     },
 
     // --- Outline ---
@@ -316,6 +324,18 @@ export const useNovelsStore = defineStore('novels', {
     },
 
     // --- Generation ---
+    async startAutoContinue(params) {
+      await this.saveIfDirty()
+      const requestParams = withNovelModelConfig(params)
+      this.generation = { status: 'pending', progress: 0, generation_type: 'auto_continue' }
+      this.rightTab = 'generation'
+
+      const { data } = await novelsApi.autoContinue(this.currentProject.id, requestParams)
+      this.generation = data
+      this.listenGeneration(data.id)
+      return data
+    },
+
     async startGeneration(type, params) {
       // Save dirty content before chapter-based generation tasks
       if (type !== 'blueprint') {
@@ -398,6 +418,25 @@ export const useNovelsStore = defineStore('novels', {
       } else if (gen.generation_type === 'chapter_version') {
         // Reload versions
         await this.fetchVersions(this.currentProject.id, this.currentChapter.id)
+        if (!this.versions.length && Array.isArray(gen.result.versions)) {
+          this.versions = gen.result.versions.filter(v => v.id && v.content_markdown)
+        }
+        if (!this.versions.length) {
+          this.generation = {
+            ...this.generation,
+            status: 'failed',
+            error: gen.result.errors?.map(e => `${e.version_type}: ${e.error}`).join('\n') || '没有生成任何可用续写版本。',
+          }
+          this.rightTab = 'generation'
+          return
+        }
+        const generatedGraphChanges = gen.result.versions
+          ?.flatMap(v => v.generated_graph_changes || [])
+          ?.filter(Boolean) || []
+        if (generatedGraphChanges.length) {
+          this.graphChanges = generatedGraphChanges
+        }
+        await this.fetchMemoryChanges(this.currentProject.id)
         this.rightTab = 'versions'
       } else if (gen.generation_type === 'extract') {
         // Load graph changes
@@ -655,6 +694,8 @@ export const useNovelsStore = defineStore('novels', {
       this.memoryChanges = []
       this.memorySearchResults = []
       this.generation = null
+      this.dirty = false
+      this.saveError = null
     },
   },
 })

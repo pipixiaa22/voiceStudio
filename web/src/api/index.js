@@ -224,6 +224,7 @@ export const novelsApi = {
 
   // Generation
   getGeneration: (gid) => api.get(`/novels/generations/${gid}`),
+  autoContinue: (pid, data) => api.post(`/novels/${pid}/auto-continue`, data),
 
   // Memories
   listMemories: (pid, params) => api.get(`/novels/${pid}/memories`, { params }),
